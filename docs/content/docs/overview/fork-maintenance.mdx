@@ -128,13 +128,13 @@ environment:
 
 图床 Token 固定使用 Bearer Auth，服务端会自动带上 `Authorization: Bearer <IMAGE_HOST_TOKEN>`。地址建议使用 `https://`，上传代理会保留 POST 跟随跳转，避免 `http://` 跳转时把上传请求变成 GET。 如果误把 `IMAGE_HOST_UPLOAD_URL` 写成 `https://amzimg.bizzlife.top/api/v1`，服务端遇到 405 时会自动重试 `/upload`；仍失败时会返回实际请求地址和更短的错误提示，避免把整段 HTML 错误页显示到前端。
 
-网页里进入右上角“配置与用户偏好 -> 图床”，填写返回域名，例如：
+网页里进入右上角“配置与用户偏好 -> 图床”，填写图床根域名，例如：
 
 ```text
-http://kidn.brp2o0stwv.xin
+brp2o0stwv.xin
 ```
 
-上传成功后会复制替换域名后的链接；未填写返回域名时不会上传，也不会返回原始图床域名。
+上传成功后会自动生成 `http://随机4位.m.brp2o0stwv.xin`，并复制替换域名后的链接；未填写根域名时不会上传，也不会返回原始图床域名。
 
 更新部署：
 

@@ -1557,7 +1557,7 @@ function InfiniteCanvasPage() {
             }
             const publicBaseUrl = imageHost.publicBaseUrl.trim();
             if (!publicBaseUrl) {
-                message.warning("请先配置图床返回域名");
+                message.warning("请先配置图床根域名");
                 openConfigDialog(false, "imageHost");
                 return;
             }
