@@ -39,6 +39,15 @@ const apiFormatOptions: Array<{ label: string; value: ApiCallFormat }> = [
     { label: "Gemini", value: "gemini" },
 ];
 
+const imageQualityOptions = [
+    { label: "自动", value: "auto" },
+    { label: "高", value: "high" },
+    { label: "中", value: "medium" },
+    { label: "低", value: "low" },
+];
+
+const imageSizeOptions = ["auto", "1:1", "3:2", "2:3", "4:3", "3:4", "16:9", "9:16", "2048x2048", "2048x1152", "1152x2048", "3840x2160", "2160x3840"].map((value) => ({ label: value, value }));
+
 const webdavDomainKeys: AppSyncDomainKey[] = ["canvas", "assets", "image-workbench", "video-workbench"];
 const webdavDomainLabels: Record<AppSyncDomainKey, string> = {
     canvas: "画布",
@@ -342,15 +351,49 @@ export function AppConfigModal() {
                         label: "生成偏好",
                         children: (
                             <Form layout="vertical" requiredMark={false}>
-                                <div className="grid gap-4 md:grid-cols-4">
-                                    <Form.Item label="画布默认生图张数" extra="新建画布生图和配置节点默认使用，单个节点仍可单独覆盖。" className="mb-4">
+                                <section className="mb-4 rounded-lg border border-stone-200 p-3 dark:border-stone-800">
+                                    <div className="mb-3">
+                                        <div className="text-sm font-semibold">默认图像设置</div>
+                                        <div className="mt-1 text-xs leading-5 text-stone-500">从 Docker 默认配置下发，也可以在这里调整；单个生成节点仍可单独覆盖。</div>
+                                    </div>
+                                    <div className="grid gap-4 md:grid-cols-4">
+                                        <Form.Item label="默认质量" className="mb-0">
+                                            <Select value={config.quality} options={imageQualityOptions} onChange={(value) => updateConfig("quality", value)} />
+                                        </Form.Item>
+                                        <Form.Item label="默认尺寸" className="mb-0">
+                                            <Select mode="tags" maxCount={1} value={config.size ? [config.size] : []} options={imageSizeOptions} onChange={(values) => updateConfig("size", values[values.length - 1] || "auto")} />
+                                        </Form.Item>
+                                        <Form.Item label="工作台默认张数" className="mb-0">
+                                            <Input
+                                                type="number"
+                                                min={1}
+                                                max={15}
+                                                value={config.count}
+                                                onChange={(event) => updateConfig("count", event.target.value)}
+                                                onBlur={(event) => updateConfig("count", normalizeImageCount(event.target.value, 1))}
+                                            />
+                                        </Form.Item>
+                                        <Form.Item label="画布默认张数" extra="新建画布生图和配置节点默认使用。" className="mb-0">
+                                            <Input
+                                                type="number"
+                                                min={1}
+                                                max={15}
+                                                value={config.canvasImageCount}
+                                                onChange={(event) => updateConfig("canvasImageCount", event.target.value)}
+                                                onBlur={(event) => updateConfig("canvasImageCount", normalizeImageCount(event.target.value, 3))}
+                                            />
+                                        </Form.Item>
+                                    </div>
+                                </section>
+                                <div className="grid gap-4 md:grid-cols-3">
+                                    <Form.Item label="默认视频秒数" className="mb-4">
                                         <Input
                                             type="number"
                                             min={1}
-                                            max={15}
-                                            value={config.canvasImageCount}
-                                            onChange={(event) => updateConfig("canvasImageCount", event.target.value)}
-                                            onBlur={(event) => updateConfig("canvasImageCount", normalizeImageCount(event.target.value))}
+                                            max={60}
+                                            value={config.videoSeconds}
+                                            onChange={(event) => updateConfig("videoSeconds", event.target.value)}
+                                            onBlur={(event) => updateConfig("videoSeconds", normalizeRangeCount(event.target.value, 6, 1, 60))}
                                         />
                                     </Form.Item>
                                     <Form.Item label="默认音频声音" className="mb-4">
@@ -495,8 +538,12 @@ function normalizeDefaultModel(value: string, options: string[]) {
     return options[0] || value;
 }
 
-function normalizeImageCount(value: string) {
-    return String(Math.max(1, Math.min(15, Math.floor(Math.abs(Number(value)) || 3))));
+function normalizeImageCount(value: string, fallback: number) {
+    return normalizeRangeCount(value, fallback, 1, 15);
+}
+
+function normalizeRangeCount(value: string, fallback: number, min: number, max: number) {
+    return String(Math.max(min, Math.min(max, Math.floor(Math.abs(Number(value)) || fallback))));
 }
 
 function uniqueModels(models: string[]) {

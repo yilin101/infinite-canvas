@@ -5,6 +5,7 @@ import { AUTH_COOKIE_NAME, isAuthEnabled, verifySessionToken } from "@/lib/serve
 
 const DEFAULT_IMAGE_HOST_UPLOAD_URL = "http://amzimg.bizzlife.top/api/v1/upload";
 const DEFAULT_IMAGE_HOST_FIELD = "file";
+const DEFAULT_IMAGE_HOST_METHOD = "POST";
 
 export async function POST(request: Request) {
     try {
@@ -18,24 +19,23 @@ export async function POST(request: Request) {
         const publicBaseUrl = String(incoming.get("publicBaseUrl") || "").trim();
         if (!publicBaseUrl) return NextResponse.json({ message: "请先在配置里填写图床返回域名" }, { status: 400 });
 
-        const formData = new FormData();
-        formData.append(imageHostField(), file, file.name || "canvas-image.png");
+        const uploadUrl = imageHostUploadUrl();
+        const response = await uploadToImageHost(uploadUrl, file);
+        let text = await response.text();
+        let data = parseJson(text);
+        let url = extractImageUrl(data);
 
-        const headers = new Headers();
-        const token = imageHostToken();
-        if (token) headers.set("Authorization", `Bearer ${token}`);
-
-        const response = await fetch(imageHostUploadUrl(), {
-            method: "POST",
-            headers,
-            body: formData,
-        });
-        const text = await response.text();
-        const data = parseJson(text);
-        const url = extractImageUrl(data);
+        if (response.status === 405 && shouldRetryUploadUrl(uploadUrl)) {
+            const retryResponse = await uploadToImageHost(`${uploadUrl.replace(/\/+$/, "")}/upload`, file);
+            text = await retryResponse.text();
+            data = parseJson(text);
+            url = extractImageUrl(data);
+            if (!retryResponse.ok || !url) return uploadErrorResponse(retryResponse, data, text);
+            return NextResponse.json({ url: rewriteUrlBase(url, publicBaseUrl), raw: data });
+        }
 
         if (!response.ok || !url) {
-            return NextResponse.json({ message: extractErrorMessage(data) || cleanErrorText(text) || "上传图床失败" }, { status: response.status || 502 });
+            return uploadErrorResponse(response, data, text);
         }
 
         return NextResponse.json({ url: rewriteUrlBase(url, publicBaseUrl), raw: data });
@@ -48,12 +48,67 @@ function imageHostUploadUrl() {
     return (process.env.IMAGE_HOST_UPLOAD_URL || DEFAULT_IMAGE_HOST_UPLOAD_URL).trim();
 }
 
+function imageHostMethod() {
+    const method = (process.env.IMAGE_HOST_METHOD || DEFAULT_IMAGE_HOST_METHOD).trim().toUpperCase();
+    return ["POST", "PUT", "PATCH"].includes(method) ? method : DEFAULT_IMAGE_HOST_METHOD;
+}
+
 function imageHostField() {
     return (process.env.IMAGE_HOST_FIELD || DEFAULT_IMAGE_HOST_FIELD).trim() || DEFAULT_IMAGE_HOST_FIELD;
 }
 
 function imageHostToken() {
     return (process.env.IMAGE_HOST_TOKEN || "").trim();
+}
+
+function imageHostTokenHeader() {
+    return (process.env.IMAGE_HOST_TOKEN_HEADER || "Authorization").trim();
+}
+
+function imageHostTokenPrefix() {
+    return process.env.IMAGE_HOST_TOKEN_PREFIX === undefined ? "Bearer " : process.env.IMAGE_HOST_TOKEN_PREFIX;
+}
+
+function imageHostTokenField() {
+    return (process.env.IMAGE_HOST_TOKEN_FIELD || "").trim();
+}
+
+function uploadToImageHost(uploadUrl: string, file: File) {
+    const formData = new FormData();
+    formData.append(imageHostField(), file, file.name || "canvas-image.png");
+    const token = imageHostToken();
+    const tokenField = imageHostTokenField();
+    if (token && tokenField) formData.append(tokenField, token);
+
+    const headers = new Headers();
+    const tokenHeader = imageHostTokenHeader();
+    if (token && tokenHeader) headers.set(tokenHeader, `${imageHostTokenPrefix()}${token}`);
+
+    return fetch(uploadUrl, {
+        method: imageHostMethod(),
+        headers,
+        body: formData,
+    });
+}
+
+function shouldRetryUploadUrl(uploadUrl: string) {
+    try {
+        const url = new URL(uploadUrl);
+        return /\/api\/v1\/?$/.test(url.pathname);
+    } catch {
+        return false;
+    }
+}
+
+function uploadErrorResponse(response: Response, data: unknown, text: string) {
+    return NextResponse.json({ message: uploadErrorMessage(response, data, text) }, { status: response.status || 502 });
+}
+
+function uploadErrorMessage(response: Response, data: unknown, text: string) {
+    const extracted = extractErrorMessage(data);
+    if (extracted) return extracted;
+    if (response.status === 405) return `图床接口不允许 ${imageHostMethod()} 请求，请检查 IMAGE_HOST_UPLOAD_URL 是否是上传地址，或在 Docker 中调整 IMAGE_HOST_METHOD / IMAGE_HOST_TOKEN_FIELD`;
+    return cleanErrorText(text) || "上传图床失败";
 }
 
 function parseJson(text: string) {
@@ -104,5 +159,11 @@ function rewriteUrlBase(value: string, publicBaseUrl: string) {
 }
 
 function cleanErrorText(value: string) {
-    return value.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim().slice(0, 180);
+    return value
+        .replace(/<style[\s\S]*?<\/style>/gi, " ")
+        .replace(/<script[\s\S]*?<\/script>/gi, " ")
+        .replace(/<[^>]+>/g, " ")
+        .replace(/\s+/g, " ")
+        .trim()
+        .slice(0, 180);
 }
