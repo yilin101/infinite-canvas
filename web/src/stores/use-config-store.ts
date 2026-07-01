@@ -125,11 +125,12 @@ type ConfigStore = {
     config: AiConfig;
     webdav: WebdavSyncConfig;
     imageHost: ImageHostConfig;
+    serverDefaultConfigVersion: string;
     isConfigOpen: boolean;
     preferredConfigTab: ConfigTabKey;
     shouldPromptContinue: boolean;
     updateConfig: <K extends keyof AiConfig>(key: K, value: AiConfig[K]) => void;
-    applyDefaultConfig: (config: Partial<AiConfig>) => void;
+    applyDefaultConfig: (config: Partial<AiConfig>, serverDefaultConfigVersion?: string) => void;
     updateWebdavConfig: <K extends keyof WebdavSyncConfig>(key: K, value: WebdavSyncConfig[K]) => void;
     updateImageHostConfig: <K extends keyof ImageHostConfig>(key: K, value: ImageHostConfig[K]) => void;
     isAiConfigReady: (config: AiConfig, model: string) => boolean;
@@ -189,6 +190,7 @@ export const useConfigStore = create<ConfigStore>()(
             config: defaultConfig,
             webdav: defaultWebdavSyncConfig,
             imageHost: defaultImageHostConfig,
+            serverDefaultConfigVersion: "",
             isConfigOpen: false,
             preferredConfigTab: "channels",
             shouldPromptContinue: false,
@@ -199,9 +201,10 @@ export const useConfigStore = create<ConfigStore>()(
                         [key]: value,
                     },
                 })),
-            applyDefaultConfig: (defaults) =>
+            applyDefaultConfig: (defaults, serverDefaultConfigVersion) =>
                 set((state) => ({
                     config: normalizeConfig({ ...state.config, ...compactConfig(defaults) }),
+                    serverDefaultConfigVersion: serverDefaultConfigVersion || state.serverDefaultConfigVersion,
                 })),
             updateWebdavConfig: (key, value) =>
                 set((state) => ({
@@ -224,7 +227,7 @@ export const useConfigStore = create<ConfigStore>()(
         }),
         {
             name: CONFIG_STORE_KEY,
-            partialize: (state) => ({ config: state.config, webdav: state.webdav, imageHost: state.imageHost }),
+            partialize: (state) => ({ config: state.config, webdav: state.webdav, imageHost: state.imageHost, serverDefaultConfigVersion: state.serverDefaultConfigVersion }),
             merge: (persisted, current) => {
                 const persistedState = (persisted || {}) as Partial<ConfigStore>;
                 const persistedConfig = (persistedState.config || {}) as Partial<AiConfig>;
@@ -235,6 +238,7 @@ export const useConfigStore = create<ConfigStore>()(
                     ...current,
                     webdav: { ...defaultWebdavSyncConfig, ...persistedWebdav },
                     imageHost: { ...defaultImageHostConfig, ...persistedImageHost },
+                    serverDefaultConfigVersion: persistedState.serverDefaultConfigVersion || "",
                     config,
                 };
             },

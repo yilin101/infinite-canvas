@@ -13,6 +13,7 @@ export type LocalUser = {
 };
 
 type SessionDefaults = {
+    version?: string;
     config?: Partial<AiConfig>;
 };
 
@@ -60,7 +61,9 @@ export const useUserStore = create<UserStore>()((set) => ({
 function applySessionDefaults(defaults: SessionDefaults | undefined, force: boolean) {
     const config = defaults?.config;
     if (!config) return;
-    const current = useConfigStore.getState().config;
-    if (!force && current.channels.some((channel) => channel.apiKey.trim())) return;
-    useConfigStore.getState().applyDefaultConfig(config);
+    const configStore = useConfigStore.getState();
+    const version = defaults.version || "";
+    if (!force && version && version === configStore.serverDefaultConfigVersion) return;
+    if (!force && !version && configStore.config.channels.some((channel) => channel.apiKey.trim())) return;
+    configStore.applyDefaultConfig(config, version);
 }

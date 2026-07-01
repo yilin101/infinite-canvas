@@ -102,6 +102,7 @@ environment:
   APP_AUTH_SECRET: "请修改为随机长字符串"
   APP_AUTH_DISPLAY_NAME: "管理员"
   APP_AUTH_COOKIE_SECURE: "false"
+  APP_DEFAULT_CONFIG_VERSION: "default-v1"
   APP_DEFAULT_API_FORMAT: "openai"
   APP_DEFAULT_API_BASE_URL: "https://api.openai.com"
   APP_DEFAULT_API_KEY: "你的 API Key"
@@ -112,7 +113,9 @@ environment:
   APP_DEFAULT_CANVAS_IMAGE_COUNT: "3"
 ```
 
-默认会要求登录后才能使用。登录成功后，网页会把服务器配置的默认 Base URL、API Key、模型和图像默认参数写入浏览器本地配置；如果已经在网页里手动配置过 API Key，刷新页面不会自动覆盖。
+默认会要求登录后才能使用。登录成功后，网页会把服务器配置的默认 Base URL、API Key、模型和图像默认参数写入浏览器本地配置。
+
+如果后期要更换给同事使用的默认 API 地址或 Key，修改 `APP_DEFAULT_API_BASE_URL` / `APP_DEFAULT_API_KEY` 后，同步把 `APP_DEFAULT_CONFIG_VERSION` 改成新的值，例如 `api-20260701-1`。用户下次打开网页时会自动同步新的服务器默认配置；画布、素材、WebDAV 和图床根域名不会被覆盖。
 
 如果你的站点已经全站 HTTPS，可以把 `APP_AUTH_COOKIE_SECURE` 改成 `"true"`；如果还在用 HTTP 或宝塔内网反代，保持 `"false"`，否则浏览器可能不会保存登录 Cookie。
 

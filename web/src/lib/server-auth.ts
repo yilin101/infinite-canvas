@@ -14,6 +14,7 @@ export type ServerUser = {
 };
 
 export type ServerDefaults = {
+    version: string;
     config: Partial<AiConfig>;
 };
 
@@ -64,37 +65,36 @@ export function getServerDefaults(): ServerDefaults {
     const textModel = encodeDefaultModel(env("APP_DEFAULT_TEXT_MODEL", ""), channel, models[2] || imageModel);
     const audioModel = encodeDefaultModel(env("APP_DEFAULT_AUDIO_MODEL", ""), channel, models[3] || textModel);
 
-    return {
-        config: {
-            baseUrl: channel.baseUrl,
-            apiKey: channel.apiKey,
-            apiFormat: channel.apiFormat,
-            channels: [channel],
-            models,
-            imageModels: imageModel ? [imageModel] : [],
-            videoModels: videoModel ? [videoModel] : [],
-            textModels: textModel ? [textModel] : [],
-            audioModels: audioModel ? [audioModel] : [],
-            model: imageModel || models[0] || "",
-            imageModel,
-            videoModel,
-            textModel,
-            audioModel,
-            quality: env("APP_DEFAULT_IMAGE_QUALITY", ""),
-            size: env("APP_DEFAULT_IMAGE_SIZE", ""),
-            count: env("APP_DEFAULT_IMAGE_COUNT", ""),
-            canvasImageCount: env("APP_DEFAULT_CANVAS_IMAGE_COUNT", ""),
-            videoSeconds: env("APP_DEFAULT_VIDEO_SECONDS", ""),
-            vquality: env("APP_DEFAULT_VIDEO_QUALITY", ""),
-            videoGenerateAudio: env("APP_DEFAULT_VIDEO_GENERATE_AUDIO", ""),
-            videoWatermark: env("APP_DEFAULT_VIDEO_WATERMARK", ""),
-            audioVoice: env("APP_DEFAULT_AUDIO_VOICE", ""),
-            audioFormat: env("APP_DEFAULT_AUDIO_FORMAT", ""),
-            audioSpeed: env("APP_DEFAULT_AUDIO_SPEED", ""),
-            audioInstructions: env("APP_DEFAULT_AUDIO_INSTRUCTIONS", ""),
-            systemPrompt: env("APP_DEFAULT_SYSTEM_PROMPT", ""),
-        },
+    const config = {
+        baseUrl: channel.baseUrl,
+        apiKey: channel.apiKey,
+        apiFormat: channel.apiFormat,
+        channels: [channel],
+        models,
+        imageModels: imageModel ? [imageModel] : [],
+        videoModels: videoModel ? [videoModel] : [],
+        textModels: textModel ? [textModel] : [],
+        audioModels: audioModel ? [audioModel] : [],
+        model: imageModel || models[0] || "",
+        imageModel,
+        videoModel,
+        textModel,
+        audioModel,
+        quality: env("APP_DEFAULT_IMAGE_QUALITY", ""),
+        size: env("APP_DEFAULT_IMAGE_SIZE", ""),
+        count: env("APP_DEFAULT_IMAGE_COUNT", ""),
+        canvasImageCount: env("APP_DEFAULT_CANVAS_IMAGE_COUNT", ""),
+        videoSeconds: env("APP_DEFAULT_VIDEO_SECONDS", ""),
+        vquality: env("APP_DEFAULT_VIDEO_QUALITY", ""),
+        videoGenerateAudio: env("APP_DEFAULT_VIDEO_GENERATE_AUDIO", ""),
+        videoWatermark: env("APP_DEFAULT_VIDEO_WATERMARK", ""),
+        audioVoice: env("APP_DEFAULT_AUDIO_VOICE", ""),
+        audioFormat: env("APP_DEFAULT_AUDIO_FORMAT", ""),
+        audioSpeed: env("APP_DEFAULT_AUDIO_SPEED", ""),
+        audioInstructions: env("APP_DEFAULT_AUDIO_INSTRUCTIONS", ""),
+        systemPrompt: env("APP_DEFAULT_SYSTEM_PROMPT", ""),
     };
+    return { version: defaultConfigVersion(config), config };
 }
 
 function buildDefaultChannel(): ModelChannel {
@@ -132,6 +132,17 @@ function splitList(value: string) {
 
 function unique(values: string[]) {
     return Array.from(new Set(values));
+}
+
+function defaultConfigVersion(config: Partial<AiConfig>) {
+    const version = env("APP_DEFAULT_CONFIG_VERSION", "auto");
+    return `${version}-${hashString(JSON.stringify(config))}`;
+}
+
+function hashString(value: string) {
+    let hash = 5381;
+    for (let index = 0; index < value.length; index += 1) hash = ((hash << 5) + hash) ^ value.charCodeAt(index);
+    return (hash >>> 0).toString(36);
 }
 
 function env(key: string, fallback = "") {
