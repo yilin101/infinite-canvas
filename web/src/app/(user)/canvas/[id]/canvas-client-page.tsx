@@ -135,7 +135,7 @@ export default function CanvasPage() {
 
     useEffect(() => {
         setMounted(true);
-    }, [keepNodeToolbar]);
+    }, []);
 
     if (!mounted) return <CanvasRefreshShell />;
 
@@ -326,7 +326,7 @@ function InfiniteCanvasPage() {
         const coarsePointer = window.matchMedia("(pointer: coarse)").matches;
         const hasTouch = navigator.maxTouchPoints > 0;
         if (coarsePointer || hasTouch) setCanvasInputMode("pencil");
-    }, [keepNodeToolbar]);
+    }, []);
 
     const nodesRef = useRef(nodes);
     const connectionsRef = useRef(connections);
