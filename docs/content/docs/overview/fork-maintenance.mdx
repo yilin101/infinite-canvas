@@ -124,20 +124,9 @@ environment:
   IMAGE_HOST_METHOD: "POST"
   IMAGE_HOST_FIELD: "file"
   IMAGE_HOST_TOKEN: "你的图床 token"
-  IMAGE_HOST_TOKEN_HEADER: "Authorization"
-  IMAGE_HOST_TOKEN_PREFIX: "Bearer "
-  IMAGE_HOST_TOKEN_FIELD: ""
 ```
 
-如果图床接口要求把 token 放到表单字段里，而不是 `Authorization` 请求头里，可以这样改：
-
-```yaml
-environment:
-  IMAGE_HOST_TOKEN_HEADER: ""
-  IMAGE_HOST_TOKEN_FIELD: "token"
-```
-
-如果误把 `IMAGE_HOST_UPLOAD_URL` 写成 `http://amzimg.bizzlife.top/api/v1`，服务端遇到 405 时会自动重试 `/upload`；仍失败时会返回更短的错误提示，避免把整段 HTML 错误页显示到前端。
+图床 Token 固定使用 Bearer Auth，服务端会自动带上 `Authorization: Bearer <IMAGE_HOST_TOKEN>`。如果误把 `IMAGE_HOST_UPLOAD_URL` 写成 `http://amzimg.bizzlife.top/api/v1`，服务端遇到 405 时会自动重试 `/upload`；仍失败时会返回更短的错误提示，避免把整段 HTML 错误页显示到前端。
 
 网页里进入右上角“配置与用户偏好 -> 图床”，填写返回域名，例如：
 

@@ -18,6 +18,8 @@ export async function POST(request: Request) {
         if (!(file instanceof File)) return NextResponse.json({ message: "请选择要上传的图片" }, { status: 400 });
         const publicBaseUrl = String(incoming.get("publicBaseUrl") || "").trim();
         if (!publicBaseUrl) return NextResponse.json({ message: "请先在配置里填写图床返回域名" }, { status: 400 });
+        const imageHostConfigError = validateImageHostConfig();
+        if (imageHostConfigError) return NextResponse.json({ message: imageHostConfigError }, { status: 400 });
 
         const uploadUrl = imageHostUploadUrl();
         const response = await uploadToImageHost(uploadUrl, file);
@@ -61,34 +63,34 @@ function imageHostToken() {
     return (process.env.IMAGE_HOST_TOKEN || "").trim();
 }
 
-function imageHostTokenHeader() {
-    return (process.env.IMAGE_HOST_TOKEN_HEADER || "Authorization").trim();
-}
-
-function imageHostTokenPrefix() {
-    return process.env.IMAGE_HOST_TOKEN_PREFIX === undefined ? "Bearer " : process.env.IMAGE_HOST_TOKEN_PREFIX;
-}
-
-function imageHostTokenField() {
-    return (process.env.IMAGE_HOST_TOKEN_FIELD || "").trim();
-}
-
 function uploadToImageHost(uploadUrl: string, file: File) {
     const formData = new FormData();
     formData.append(imageHostField(), file, file.name || "canvas-image.png");
-    const token = imageHostToken();
-    const tokenField = imageHostTokenField();
-    if (token && tokenField) formData.append(tokenField, token);
 
     const headers = new Headers();
-    const tokenHeader = imageHostTokenHeader();
-    if (token && tokenHeader) headers.set(tokenHeader, `${imageHostTokenPrefix()}${token}`);
+    const token = imageHostToken();
+    if (token) headers.set("Authorization", `Bearer ${token}`);
 
     return fetch(uploadUrl, {
         method: imageHostMethod(),
         headers,
         body: formData,
     });
+}
+
+function validateImageHostConfig() {
+    const token = imageHostToken();
+    if (hasChinesePlaceholder(token)) return "请把 Docker 里的 IMAGE_HOST_TOKEN 改成真实图床 token，不要填写“你的图床token”这类中文占位文字";
+    if (token && !isHeaderSafe(`Bearer ${token}`)) return "IMAGE_HOST_TOKEN 包含请求头不支持的字符，请检查是否粘贴了中文、换行或占位文字";
+    return "";
+}
+
+function hasChinesePlaceholder(value: string) {
+    return /[\u4e00-\u9fff]/.test(value);
+}
+
+function isHeaderSafe(value: string) {
+    return /^[\t\x20-\x7e\x80-\xff]*$/.test(value);
 }
 
 function shouldRetryUploadUrl(uploadUrl: string) {
@@ -107,7 +109,7 @@ function uploadErrorResponse(response: Response, data: unknown, text: string) {
 function uploadErrorMessage(response: Response, data: unknown, text: string) {
     const extracted = extractErrorMessage(data);
     if (extracted) return extracted;
-    if (response.status === 405) return `图床接口不允许 ${imageHostMethod()} 请求，请检查 IMAGE_HOST_UPLOAD_URL 是否是上传地址，或在 Docker 中调整 IMAGE_HOST_METHOD / IMAGE_HOST_TOKEN_FIELD`;
+    if (response.status === 405) return `图床接口不允许 ${imageHostMethod()} 请求，请检查 IMAGE_HOST_UPLOAD_URL 是否是上传地址`;
     return cleanErrorText(text) || "上传图床失败";
 }
 

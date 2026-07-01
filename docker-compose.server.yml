@@ -26,9 +26,6 @@ services:
       IMAGE_HOST_METHOD: "POST"
       IMAGE_HOST_FIELD: "file"
       IMAGE_HOST_TOKEN: ""
-      IMAGE_HOST_TOKEN_HEADER: "Authorization"
-      IMAGE_HOST_TOKEN_PREFIX: "Bearer "
-      IMAGE_HOST_TOKEN_FIELD: ""
     ports:
       - "127.0.0.1:3000:3000"
     restart: unless-stopped
