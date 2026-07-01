@@ -3,7 +3,7 @@ import { cookies } from "next/headers";
 
 import { AUTH_COOKIE_NAME, isAuthEnabled, verifySessionToken } from "@/lib/server-auth";
 
-const DEFAULT_IMAGE_HOST_UPLOAD_URL = "http://amzimg.bizzlife.top/api/v1/upload";
+const DEFAULT_IMAGE_HOST_UPLOAD_URL = "https://amzimg.bizzlife.top/api/v1/upload";
 const DEFAULT_IMAGE_HOST_FIELD = "file";
 const DEFAULT_IMAGE_HOST_METHOD = "POST";
 
@@ -22,22 +22,24 @@ export async function POST(request: Request) {
         if (imageHostConfigError) return NextResponse.json({ message: imageHostConfigError }, { status: 400 });
 
         const uploadUrl = imageHostUploadUrl();
-        const response = await uploadToImageHost(uploadUrl, file);
+        const uploadResult = await uploadToImageHost(uploadUrl, file);
+        const response = uploadResult.response;
         let text = await response.text();
         let data = parseJson(text);
         let url = extractImageUrl(data);
 
-        if (response.status === 405 && shouldRetryUploadUrl(uploadUrl)) {
-            const retryResponse = await uploadToImageHost(`${uploadUrl.replace(/\/+$/, "")}/upload`, file);
+        if (response.status === 405 && shouldRetryUploadUrl(uploadResult.uploadUrl)) {
+            const retryResult = await uploadToImageHost(`${uploadResult.uploadUrl.replace(/\/+$/, "")}/upload`, file);
+            const retryResponse = retryResult.response;
             text = await retryResponse.text();
             data = parseJson(text);
             url = extractImageUrl(data);
-            if (!retryResponse.ok || !url) return uploadErrorResponse(retryResponse, data, text);
+            if (!retryResponse.ok || !url) return uploadErrorResponse(retryResponse, data, text, retryResult.uploadUrl);
             return NextResponse.json({ url: rewriteUrlBase(url, publicBaseUrl), raw: data });
         }
 
         if (!response.ok || !url) {
-            return uploadErrorResponse(response, data, text);
+            return uploadErrorResponse(response, data, text, uploadResult.uploadUrl);
         }
 
         return NextResponse.json({ url: rewriteUrlBase(url, publicBaseUrl), raw: data });
@@ -63,7 +65,7 @@ function imageHostToken() {
     return (process.env.IMAGE_HOST_TOKEN || "").trim();
 }
 
-function uploadToImageHost(uploadUrl: string, file: File) {
+async function uploadToImageHost(uploadUrl: string, file: File, redirectCount = 0): Promise<{ response: Response; uploadUrl: string }> {
     const formData = new FormData();
     formData.append(imageHostField(), file, file.name || "canvas-image.png");
 
@@ -71,11 +73,17 @@ function uploadToImageHost(uploadUrl: string, file: File) {
     const token = imageHostToken();
     if (token) headers.set("Authorization", `Bearer ${token}`);
 
-    return fetch(uploadUrl, {
+    const response = await fetch(uploadUrl, {
         method: imageHostMethod(),
         headers,
         body: formData,
+        redirect: "manual",
     });
+    const location = response.headers.get("location");
+    if (location && isRedirectStatus(response.status) && redirectCount < 3) {
+        return uploadToImageHost(new URL(location, uploadUrl).toString(), file, redirectCount + 1);
+    }
+    return { response, uploadUrl };
 }
 
 function validateImageHostConfig() {
@@ -102,14 +110,19 @@ function shouldRetryUploadUrl(uploadUrl: string) {
     }
 }
 
-function uploadErrorResponse(response: Response, data: unknown, text: string) {
-    return NextResponse.json({ message: uploadErrorMessage(response, data, text) }, { status: response.status || 502 });
+function isRedirectStatus(status: number) {
+    return [301, 302, 303, 307, 308].includes(status);
 }
 
-function uploadErrorMessage(response: Response, data: unknown, text: string) {
+function uploadErrorResponse(response: Response, data: unknown, text: string, uploadUrl: string) {
+    return NextResponse.json({ message: uploadErrorMessage(response, data, text, uploadUrl) }, { status: response.status || 502 });
+}
+
+function uploadErrorMessage(response: Response, data: unknown, text: string, uploadUrl: string) {
     const extracted = extractErrorMessage(data);
     if (extracted) return extracted;
-    if (response.status === 405) return `图床接口不允许 ${imageHostMethod()} 请求，请检查 IMAGE_HOST_UPLOAD_URL 是否是上传地址`;
+    if (response.status === 405 && imageHostUploadUrl().startsWith("http://")) return "图床接口不允许当前请求，请把 IMAGE_HOST_UPLOAD_URL 改成 https:// 开头，避免 http 跳转导致 POST 变成 GET";
+    if (response.status === 405) return `图床接口不允许 ${imageHostMethod()} 请求。当前请求地址：${uploadUrl}，请确认 IMAGE_HOST_UPLOAD_URL 是真实上传地址`;
     return cleanErrorText(text) || "上传图床失败";
 }
 
