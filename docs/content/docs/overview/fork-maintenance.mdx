@@ -92,6 +92,47 @@ cd /www/wwwroot/infinite-canvas
 docker compose -f docker-compose.server.yml up -d
 ```
 
+部署前先在 `docker-compose.server.yml` 里修改登录账号和默认 AI 配置：
+
+```yaml
+environment:
+  APP_AUTH_ENABLED: "true"
+  APP_AUTH_USERNAME: "admin"
+  APP_AUTH_PASSWORD: "请修改为强密码"
+  APP_AUTH_SECRET: "请修改为随机长字符串"
+  APP_AUTH_DISPLAY_NAME: "管理员"
+  APP_AUTH_COOKIE_SECURE: "false"
+  APP_DEFAULT_API_FORMAT: "openai"
+  APP_DEFAULT_API_BASE_URL: "https://api.openai.com"
+  APP_DEFAULT_API_KEY: "你的 API Key"
+  APP_DEFAULT_IMAGE_MODEL: "gpt-image-2"
+  APP_DEFAULT_IMAGE_SIZE: "1:1"
+  APP_DEFAULT_IMAGE_QUALITY: "auto"
+  APP_DEFAULT_IMAGE_COUNT: "1"
+  APP_DEFAULT_CANVAS_IMAGE_COUNT: "3"
+```
+
+默认会要求登录后才能使用。登录成功后，网页会把服务器配置的默认 Base URL、API Key、模型和图像默认参数写入浏览器本地配置；如果已经在网页里手动配置过 API Key，刷新页面不会自动覆盖。
+
+如果你的站点已经全站 HTTPS，可以把 `APP_AUTH_COOKIE_SECURE` 改成 `"true"`；如果还在用 HTTP 或宝塔内网反代，保持 `"false"`，否则浏览器可能不会保存登录 Cookie。
+
+如果要使用“上传图床”，先在 `docker-compose.server.yml` 里填写图床 Token：
+
+```yaml
+environment:
+  IMAGE_HOST_UPLOAD_URL: "http://amzimg.bizzlife.top/api/v1/upload"
+  IMAGE_HOST_FIELD: "file"
+  IMAGE_HOST_TOKEN: "你的图床 token"
+```
+
+网页里进入右上角“配置与用户偏好 -> 图床”，填写返回域名，例如：
+
+```text
+http://kidn.brp2o0stwv.xin
+```
+
+上传成功后会复制替换域名后的链接；未填写返回域名时不会上传，也不会返回原始图床域名。
+
 更新部署：
 
 ```bash

@@ -5,13 +5,16 @@ import { useEffect, useRef } from "react";
 import { App } from "antd";
 
 import { createModelChannel, useConfigStore } from "@/stores/use-config-store";
+import { useUserStore } from "@/stores/use-user-store";
 
 export function ClientRootInit({ children }: { children: ReactNode }) {
     const { message } = App.useApp();
     const handledConfigParams = useRef(false);
+    const refreshedSession = useRef(false);
     const updateConfig = useConfigStore((state) => state.updateConfig);
     const config = useConfigStore((state) => state.config);
     const openConfigDialog = useConfigStore((state) => state.openConfigDialog);
+    const refreshSession = useUserStore((state) => state.refreshSession);
 
     useEffect(() => {
         if (handledConfigParams.current) return;
@@ -45,6 +48,12 @@ export function ClientRootInit({ children }: { children: ReactNode }) {
         openConfigDialog(false);
         message.success("已导入本地直连配置");
     }, [config.channels, message, openConfigDialog, updateConfig]);
+
+    useEffect(() => {
+        if (refreshedSession.current) return;
+        refreshedSession.current = true;
+        void refreshSession();
+    }, [refreshSession]);
 
     return <>{children}</>;
 }

@@ -2,14 +2,14 @@
 
 import { App, Button, Form, Input, Modal, Progress, Segmented, Select, Tabs } from "antd";
 import { CircleAlert, Cloud, Plus, RefreshCw, Trash2, Wifi } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 import { ModelPicker } from "@/components/model-picker";
 import { fetchChannelModels } from "@/services/api/image";
 import { syncAppDataToWebdav, type AppSyncDomainKey, type AppSyncProgressEvent } from "@/services/app-sync";
 import { testWebdavConnection, WEBDAV_MANIFEST_FILE_NAME } from "@/services/webdav-sync";
 import { audioFormatOptions, audioVoiceOptions, normalizeAudioSpeedValue } from "@/lib/audio-generation";
-import { createModelChannel, defaultBaseUrlForApiFormat, filterModelsByCapability, modelOptionLabel, modelOptionsFromChannels, normalizeModelOptionValue, useConfigStore, type AiConfig, type ApiCallFormat, type ModelCapability, type ModelChannel } from "@/stores/use-config-store";
+import { createModelChannel, defaultBaseUrlForApiFormat, filterModelsByCapability, modelOptionLabel, modelOptionsFromChannels, normalizeModelOptionValue, useConfigStore, type AiConfig, type ApiCallFormat, type ConfigTabKey, type ModelCapability, type ModelChannel } from "@/stores/use-config-store";
 
 type ModelGroup = {
     capability: ModelCapability;
@@ -59,7 +59,7 @@ function createWebdavDomainProgress(): Record<AppSyncDomainKey, WebdavDomainProg
 
 export function AppConfigModal() {
     const { message } = App.useApp();
-    const [activeTab, setActiveTab] = useState("channels");
+    const [activeTab, setActiveTab] = useState<ConfigTabKey>("channels");
     const [loadingChannelId, setLoadingChannelId] = useState("");
     const [testingWebdav, setTestingWebdav] = useState(false);
     const [syncingWebdav, setSyncingWebdav] = useState(false);
@@ -67,14 +67,21 @@ export function AppConfigModal() {
     const [webdavDomainProgress, setWebdavDomainProgress] = useState(createWebdavDomainProgress);
     const config = useConfigStore((state) => state.config);
     const webdav = useConfigStore((state) => state.webdav);
+    const imageHost = useConfigStore((state) => state.imageHost);
     const updateConfig = useConfigStore((state) => state.updateConfig);
     const updateWebdavConfig = useConfigStore((state) => state.updateWebdavConfig);
+    const updateImageHostConfig = useConfigStore((state) => state.updateImageHostConfig);
     const isConfigOpen = useConfigStore((state) => state.isConfigOpen);
+    const preferredConfigTab = useConfigStore((state) => state.preferredConfigTab);
     const shouldPromptContinue = useConfigStore((state) => state.shouldPromptContinue);
     const setConfigDialogOpen = useConfigStore((state) => state.setConfigDialogOpen);
     const clearPromptContinue = useConfigStore((state) => state.clearPromptContinue);
     const modelOptions = config.models.map((model) => ({ label: modelOptionLabel(config, model), value: model }));
     const webdavReady = Boolean(webdav.url.trim());
+
+    useEffect(() => {
+        if (isConfigOpen) setActiveTab(preferredConfigTab);
+    }, [isConfigOpen, preferredConfigTab]);
 
     const saveConfig = (nextConfig: AiConfig) => {
         (Object.keys(nextConfig) as Array<keyof AiConfig>).forEach((key) => updateConfig(key, nextConfig[key]));
@@ -370,6 +377,25 @@ export function AppConfigModal() {
                                 <Form.Item label="系统提示词" className="mb-0">
                                     <Input.TextArea rows={4} value={config.systemPrompt} placeholder="例如：你是一位擅长电影感写实摄影的视觉导演。" onChange={(event) => updateConfig("systemPrompt", event.target.value)} />
                                 </Form.Item>
+                            </Form>
+                        ),
+                    },
+                    {
+                        key: "imageHost",
+                        label: "图床",
+                        children: (
+                            <Form layout="vertical" requiredMark={false}>
+                                <section className="rounded-lg border border-stone-200 p-3 dark:border-stone-800">
+                                    <div className="mb-4">
+                                        <div className="text-sm font-semibold">上传图床</div>
+                                        <div className="mt-1 text-xs leading-5 text-stone-500">图片节点的“传图床”会通过服务端代理上传。上传接口、字段名和 Token 在 Docker 环境变量中配置；返回域名必填，未填写时不会上传，也不会复制原始图床域名链接。</div>
+                                    </div>
+                                    <div className="grid gap-4">
+                                        <Form.Item label="返回域名" extra="例如 http://kidn.brp2o0stwv.xin，上传成功后会把图床返回链接的域名替换成这里填写的域名。" className="mb-0">
+                                            <Input value={imageHost.publicBaseUrl} placeholder="http://kidn.brp2o0stwv.xin" onChange={(event) => updateImageHostConfig("publicBaseUrl", event.target.value)} />
+                                        </Form.Item>
+                                    </div>
+                                </section>
                             </Form>
                         ),
                     },

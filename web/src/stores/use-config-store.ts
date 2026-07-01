@@ -56,6 +56,12 @@ export type WebdavSyncConfig = {
     lastSyncedAt: string;
 };
 
+export type ImageHostConfig = {
+    publicBaseUrl: string;
+};
+
+export type ConfigTabKey = "channels" | "models" | "preferences" | "imageHost" | "webdav";
+
 export const CONFIG_STORE_KEY = "infinite-canvas:ai_config_store";
 export type ModelCapability = "image" | "video" | "text" | "audio";
 const CHANNEL_MODEL_SEPARATOR = "::";
@@ -111,15 +117,23 @@ export const defaultWebdavSyncConfig: WebdavSyncConfig = {
     lastSyncedAt: "",
 };
 
+export const defaultImageHostConfig: ImageHostConfig = {
+    publicBaseUrl: "",
+};
+
 type ConfigStore = {
     config: AiConfig;
     webdav: WebdavSyncConfig;
+    imageHost: ImageHostConfig;
     isConfigOpen: boolean;
+    preferredConfigTab: ConfigTabKey;
     shouldPromptContinue: boolean;
     updateConfig: <K extends keyof AiConfig>(key: K, value: AiConfig[K]) => void;
+    applyDefaultConfig: (config: Partial<AiConfig>) => void;
     updateWebdavConfig: <K extends keyof WebdavSyncConfig>(key: K, value: WebdavSyncConfig[K]) => void;
+    updateImageHostConfig: <K extends keyof ImageHostConfig>(key: K, value: ImageHostConfig[K]) => void;
     isAiConfigReady: (config: AiConfig, model: string) => boolean;
-    openConfigDialog: (shouldPromptContinue?: boolean) => void;
+    openConfigDialog: (shouldPromptContinue?: boolean, preferredConfigTab?: ConfigTabKey) => void;
     setConfigDialogOpen: (isOpen: boolean) => void;
     clearPromptContinue: () => void;
 };
@@ -174,7 +188,9 @@ export const useConfigStore = create<ConfigStore>()(
         (set, get) => ({
             config: defaultConfig,
             webdav: defaultWebdavSyncConfig,
+            imageHost: defaultImageHostConfig,
             isConfigOpen: false,
+            preferredConfigTab: "channels",
             shouldPromptContinue: false,
             updateConfig: (key, value) =>
                 set((state) => ({
@@ -183,6 +199,10 @@ export const useConfigStore = create<ConfigStore>()(
                         [key]: value,
                     },
                 })),
+            applyDefaultConfig: (defaults) =>
+                set((state) => ({
+                    config: normalizeConfig({ ...state.config, ...compactConfig(defaults) }),
+                })),
             updateWebdavConfig: (key, value) =>
                 set((state) => ({
                     webdav: {
@@ -190,54 +210,75 @@ export const useConfigStore = create<ConfigStore>()(
                         [key]: value,
                     },
                 })),
+            updateImageHostConfig: (key, value) =>
+                set((state) => ({
+                    imageHost: {
+                        ...state.imageHost,
+                        [key]: value,
+                    },
+                })),
             isAiConfigReady: (config, model) => isAiConfigReady(config, model),
-            openConfigDialog: (shouldPromptContinue = false) => set({ isConfigOpen: true, shouldPromptContinue }),
+            openConfigDialog: (shouldPromptContinue = false, preferredConfigTab = "channels") => set({ isConfigOpen: true, shouldPromptContinue, preferredConfigTab }),
             setConfigDialogOpen: (isConfigOpen) => set({ isConfigOpen }),
             clearPromptContinue: () => set({ shouldPromptContinue: false }),
         }),
         {
             name: CONFIG_STORE_KEY,
-            partialize: (state) => ({ config: state.config, webdav: state.webdav }),
+            partialize: (state) => ({ config: state.config, webdav: state.webdav, imageHost: state.imageHost }),
             merge: (persisted, current) => {
                 const persistedState = (persisted || {}) as Partial<ConfigStore>;
                 const persistedConfig = (persistedState.config || {}) as Partial<AiConfig>;
                 const persistedWebdav = (persistedState.webdav || {}) as Partial<WebdavSyncConfig>;
-                const config = { ...defaultConfig, ...persistedConfig };
-                if (!Array.isArray(persistedConfig.channels)) config.channels = [];
-                const channels = normalizeChannels(config);
-                const models = modelOptionsFromChannels(channels);
+                const persistedImageHost = (persistedState.imageHost || {}) as Partial<ImageHostConfig>;
+                const config = normalizeConfig(persistedConfig);
                 return {
                     ...current,
                     webdav: { ...defaultWebdavSyncConfig, ...persistedWebdav },
-                    config: {
-                        ...config,
-                        channelMode: "local",
-                        apiFormat: normalizeApiFormat(config.apiFormat),
-                        channels,
-                        models,
-                        imageModel: normalizeModelOptionValue(config.imageModel || config.model, channels),
-                        videoModel: normalizeModelOptionValue(config.videoModel || "grok-imagine-video", channels),
-                        textModel: normalizeModelOptionValue(config.textModel || config.model, channels),
-                        audioModel: normalizeModelOptionValue(config.audioModel || defaultConfig.audioModel, channels),
-                        audioVoice: config.audioVoice || defaultConfig.audioVoice,
-                        audioFormat: config.audioFormat || defaultConfig.audioFormat,
-                        audioSpeed: config.audioSpeed || defaultConfig.audioSpeed,
-                        audioInstructions: config.audioInstructions || "",
-                        videoSeconds: config.videoSeconds || "6",
-                        vquality: config.vquality || "720",
-                        videoGenerateAudio: config.videoGenerateAudio || "true",
-                        videoWatermark: config.videoWatermark || "false",
-                        canvasImageCount: config.canvasImageCount || "3",
-                        imageModels: Array.isArray(persistedConfig.imageModels) ? normalizeModelList(config.imageModels, channels) : filterModelsByCapability(models, "image"),
-                        videoModels: Array.isArray(persistedConfig.videoModels) ? normalizeModelList(config.videoModels, channels) : filterModelsByCapability(models, "video"),
-                        textModels: Array.isArray(persistedConfig.textModels) ? normalizeModelList(config.textModels, channels) : filterModelsByCapability(models, "text"),
-                        audioModels: Array.isArray(persistedConfig.audioModels) ? normalizeModelList(config.audioModels, channels) : filterModelsByCapability(models, "audio"),
-                    },
+                    imageHost: { ...defaultImageHostConfig, ...persistedImageHost },
+                    config,
                 };
             },
         },
     ),
 );
+
+function normalizeConfig(input: Partial<AiConfig>): AiConfig {
+    const config = { ...defaultConfig, ...input };
+    if (!Array.isArray(input.channels)) config.channels = [];
+    const channels = normalizeChannels(config);
+    const models = modelOptionsFromChannels(channels);
+    return {
+        ...config,
+        channelMode: "local",
+        apiFormat: normalizeApiFormat(config.apiFormat),
+        channels,
+        models,
+        imageModel: normalizeModelOptionValue(config.imageModel || config.model, channels),
+        videoModel: normalizeModelOptionValue(config.videoModel || "grok-imagine-video", channels),
+        textModel: normalizeModelOptionValue(config.textModel || config.model, channels),
+        audioModel: normalizeModelOptionValue(config.audioModel || defaultConfig.audioModel, channels),
+        audioVoice: config.audioVoice || defaultConfig.audioVoice,
+        audioFormat: config.audioFormat || defaultConfig.audioFormat,
+        audioSpeed: config.audioSpeed || defaultConfig.audioSpeed,
+        audioInstructions: config.audioInstructions || "",
+        videoSeconds: config.videoSeconds || "6",
+        vquality: config.vquality || "720",
+        videoGenerateAudio: config.videoGenerateAudio || "true",
+        videoWatermark: config.videoWatermark || "false",
+        quality: config.quality || defaultConfig.quality,
+        size: config.size || defaultConfig.size,
+        count: config.count || defaultConfig.count,
+        canvasImageCount: config.canvasImageCount || "3",
+        imageModels: Array.isArray(input.imageModels) ? normalizeModelList(config.imageModels, channels) : filterModelsByCapability(models, "image"),
+        videoModels: Array.isArray(input.videoModels) ? normalizeModelList(config.videoModels, channels) : filterModelsByCapability(models, "video"),
+        textModels: Array.isArray(input.textModels) ? normalizeModelList(config.textModels, channels) : filterModelsByCapability(models, "text"),
+        audioModels: Array.isArray(input.audioModels) ? normalizeModelList(config.audioModels, channels) : filterModelsByCapability(models, "audio"),
+    };
+}
+
+function compactConfig(config: Partial<AiConfig>) {
+    return Object.fromEntries(Object.entries(config).filter(([, value]) => value !== "" && value !== undefined && (!Array.isArray(value) || value.length > 0))) as Partial<AiConfig>;
+}
 
 function normalizeModelList(models: string[], channels: ModelChannel[]) {
     const allModelOptions = channels.flatMap((channel) => channel.models.map((model) => encodeChannelModel(channel.id, model)));

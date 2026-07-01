@@ -257,6 +257,7 @@ function InfiniteCanvasPage() {
     });
 
     const config = useConfigStore((state) => state.config);
+    const imageHost = useConfigStore((state) => state.imageHost);
     const effectiveConfig = useEffectiveConfig();
     const isAiConfigReady = useConfigStore((state) => state.isAiConfigReady);
     const openConfigDialog = useConfigStore((state) => state.openConfigDialog);
@@ -1554,11 +1555,17 @@ function InfiniteCanvasPage() {
                 message.error("没有可上传的图片");
                 return;
             }
+            const publicBaseUrl = imageHost.publicBaseUrl.trim();
+            if (!publicBaseUrl) {
+                message.warning("请先配置图床返回域名");
+                openConfigDialog(false, "imageHost");
+                return;
+            }
             const hide = message.loading("正在上传图床...", 0);
             try {
                 const blob = (node.metadata.storageKey ? await getImageBlob(node.metadata.storageKey) : null) || (await (await fetch(node.metadata.content)).blob());
                 const extension = node.metadata.mimeType?.split("/")[1] || imageExtension(node.metadata.content);
-                const url = await uploadImageToHost(blob, `canvas-${node.id}.${extension}`);
+                const url = await uploadImageToHost(blob, publicBaseUrl, `canvas-${node.id}.${extension}`);
                 copy(url);
                 hide();
                 message.success("图床链接已复制");
@@ -1567,7 +1574,7 @@ function InfiniteCanvasPage() {
                 message.error(error instanceof Error ? error.message : "上传图床失败");
             }
         },
-        [message],
+        [imageHost.publicBaseUrl, message, openConfigDialog],
     );
 
     const saveNodeAsset = useCallback(

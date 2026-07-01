@@ -1,8 +1,9 @@
 "use client";
 
-export async function uploadImageToHost(file: Blob, filename = "canvas-image.png") {
+export async function uploadImageToHost(file: Blob, publicBaseUrl: string, filename = "canvas-image.png") {
     const formData = new FormData();
     formData.append("image", file, filename);
+    formData.append("publicBaseUrl", publicBaseUrl);
 
     const response = await fetch("/api/image-host/upload", {
         method: "POST",

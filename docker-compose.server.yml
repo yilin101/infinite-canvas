@@ -2,6 +2,29 @@ services:
   app:
     image: ghcr.io/yilin101/infinite-canvas:latest
     container_name: infinite-canvas
+    environment:
+      APP_AUTH_ENABLED: "true"
+      APP_AUTH_USERNAME: "admin"
+      APP_AUTH_PASSWORD: "请修改为强密码"
+      APP_AUTH_SECRET: "请修改为随机长字符串"
+      APP_AUTH_DISPLAY_NAME: "管理员"
+      APP_AUTH_COOKIE_SECURE: "false"
+      APP_DEFAULT_API_FORMAT: "openai"
+      APP_DEFAULT_API_BASE_URL: "https://api.openai.com"
+      APP_DEFAULT_API_KEY: ""
+      APP_DEFAULT_CHANNEL_NAME: "默认渠道"
+      APP_DEFAULT_IMAGE_MODEL: "gpt-image-2"
+      APP_DEFAULT_VIDEO_MODEL: "grok-imagine-video"
+      APP_DEFAULT_TEXT_MODEL: "gpt-5.5"
+      APP_DEFAULT_AUDIO_MODEL: "gpt-4o-mini-tts"
+      APP_DEFAULT_MODELS: "gpt-image-2,grok-imagine-video,gpt-5.5,gpt-4o-mini-tts"
+      APP_DEFAULT_IMAGE_QUALITY: "auto"
+      APP_DEFAULT_IMAGE_SIZE: "1:1"
+      APP_DEFAULT_IMAGE_COUNT: "1"
+      APP_DEFAULT_CANVAS_IMAGE_COUNT: "3"
+      IMAGE_HOST_UPLOAD_URL: "http://amzimg.bizzlife.top/api/v1/upload"
+      IMAGE_HOST_FIELD: "file"
+      IMAGE_HOST_TOKEN: ""
     ports:
       - "127.0.0.1:3000:3000"
     restart: unless-stopped

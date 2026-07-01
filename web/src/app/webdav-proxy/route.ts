@@ -1,4 +1,7 @@
 import { NextRequest } from "next/server";
+import { cookies } from "next/headers";
+
+import { AUTH_COOKIE_NAME, isAuthEnabled, verifySessionToken } from "@/lib/server-auth";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -6,6 +9,10 @@ export const dynamic = "force-dynamic";
 const WEBDAV_PROXY_TIMEOUT_MS = 120000;
 
 export async function POST(request: NextRequest) {
+    if (isAuthEnabled()) {
+        const cookieStore = await cookies();
+        if (!(await verifySessionToken(cookieStore.get(AUTH_COOKIE_NAME)?.value))) return new Response("请先登录", { status: 401 });
+    }
     const target = request.headers.get("x-webdav-target") || "";
     const method = (request.headers.get("x-webdav-method") || "GET").toUpperCase();
     if (!target) return new Response("Missing x-webdav-target", { status: 400 });
