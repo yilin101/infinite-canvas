@@ -1,0 +1,129 @@
+---
+title: 二开维护
+description: 维护个人分支、同步原项目更新与宝塔 Docker 部署
+---
+
+# 二开维护
+
+本文档记录当前个人分支的长期维护方式：保留自定义功能，定期同步原项目更新，并把镜像部署到宝塔服务器。
+
+## 分支关系
+
+当前仓库作为个人维护版使用：
+
+- `origin`：你的 GitHub 仓库，例如 `yilin101/infinite-canvas`
+- `upstream`：原项目 `basketikun/infinite-canvas`
+
+本分支的自定义功能应先提交到 `origin/main`，再同步 `upstream/main`。这样 Git 可以识别哪些是本分支的改动，哪些是原项目新增功能。
+
+## 同步原项目
+
+推荐在 GitHub Actions 里手动运行 `Sync upstream` 工作流。它会拉取原项目 `main` 分支，创建同步分支，并自动发起 Pull Request。
+
+如果没有冲突：
+
+1. 打开 GitHub Pull Request。
+2. 检查变更。
+3. 合并到 `main`。
+4. 等待 Docker image 工作流发布新镜像。
+
+如果有冲突：
+
+1. 在 PR 页面查看冲突文件。
+2. 优先保留本分支的自定义功能。
+3. 重点检查图片节点工具栏相关文件。
+4. 本地测试后再合并。
+
+本分支比较容易冲突的文件：
+
+```text
+web/src/app/(user)/canvas/components/canvas-image-toolbar-tools.tsx
+web/src/app/(user)/canvas/components/canvas-node-hover-toolbar.tsx
+web/src/app/(user)/canvas/[id]/canvas-client-page.tsx
+```
+
+## 本地手动同步
+
+也可以在本地执行：
+
+```bash
+git remote add upstream https://github.com/basketikun/infinite-canvas.git
+git fetch upstream
+git checkout main
+git pull origin main
+git merge upstream/main
+```
+
+解决冲突后提交：
+
+```bash
+git add .
+git commit
+git push origin main
+```
+
+## Docker 镜像
+
+`.github/workflows/docker-image.yml` 会在 `main` 分支更新后构建并推送：
+
+```text
+ghcr.io/yilin101/infinite-canvas:latest
+```
+
+打 tag 时也会发布对应版本号镜像。
+
+如果宝塔服务器拉取镜像提示没有权限，有两种处理方式：
+
+- 在 GitHub 仓库的 Packages 页面把 `infinite-canvas` 包设置为 Public。
+- 或者在服务器执行 `docker login ghcr.io`，使用 GitHub 用户名和有 `read:packages` 权限的 Personal Access Token 登录。
+
+## 宝塔部署
+
+服务器目录建议：
+
+```text
+/www/wwwroot/infinite-canvas
+```
+
+首次部署：
+
+```bash
+cd /www/wwwroot/infinite-canvas
+docker compose -f docker-compose.server.yml up -d
+```
+
+更新部署：
+
+```bash
+cd /www/wwwroot/infinite-canvas
+docker compose -f docker-compose.server.yml pull
+docker compose -f docker-compose.server.yml up -d
+```
+
+查看日志：
+
+```bash
+docker logs -f infinite-canvas
+```
+
+宝塔网站反向代理目标：
+
+```text
+http://127.0.0.1:3000
+```
+
+建议在 Nginx 站点配置中加入：
+
+```nginx
+client_max_body_size 50m;
+```
+
+## 回滚
+
+如果最新镜像有问题，可以先在 GitHub Actions 找到上一个可用的 tag 或 sha 镜像，把 `docker-compose.server.yml` 中的镜像 tag 临时改成旧版本，然后执行：
+
+```bash
+docker compose -f docker-compose.server.yml up -d
+```
+
+确认问题后再修复 `main` 并重新发布 `latest`。

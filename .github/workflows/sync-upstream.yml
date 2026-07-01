@@ -1,0 +1,46 @@
+name: Sync upstream
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Configure git
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+      - name: Fetch upstream
+        run: |
+          git remote add upstream https://github.com/basketikun/infinite-canvas.git || git remote set-url upstream https://github.com/basketikun/infinite-canvas.git
+          git fetch upstream main
+
+      - name: Create sync branch
+        run: |
+          branch="sync-upstream-$(date +%Y%m%d%H%M%S)"
+          git checkout -b "$branch"
+          git merge upstream/main --no-edit
+          echo "branch=$branch" >> "$GITHUB_ENV"
+
+      - name: Push sync branch
+        run: git push origin "$branch"
+
+      - name: Create pull request
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh pr create \
+            --base main \
+            --head "$branch" \
+            --title "chore: sync upstream" \
+            --body "同步原项目 basketikun/infinite-canvas 的 main 分支。若有冲突，请在这个 PR 中解决并测试后合并。"
