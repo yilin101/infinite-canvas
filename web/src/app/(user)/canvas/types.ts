@@ -9,6 +9,8 @@ export type ViewportTransform = {
     k: number;
 };
 
+export type CanvasInputMode = "mouse" | "touch" | "pencil";
+
 export enum CanvasNodeType {
     Image = "image",
     Text = "text",

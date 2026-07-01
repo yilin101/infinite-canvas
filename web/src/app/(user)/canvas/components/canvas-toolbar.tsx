@@ -1,13 +1,15 @@
 import type { CSSProperties, MouseEvent as ReactMouseEvent, ReactNode, RefObject } from "react";
 import { useRef, useState } from "react";
 import { Button, Segmented, Switch } from "antd";
-import { CircleDot, Eraser, FolderOpen, Grid2x2, Hand, Image as ImageIcon, Info, Moon, Music2, Palette, Redo2, Settings2, Square, Sun, Trash2, Type, Undo2, Upload, Video } from "lucide-react";
+import { CircleDot, Eraser, FolderOpen, Grid2x2, Hand, Image as ImageIcon, Info, Moon, MousePointer2, Music2, Palette, Pencil, Redo2, Settings2, Square, Sun, Trash2, Type, Undo2, Upload, Video } from "lucide-react";
 
 import { canvasThemes, type CanvasBackgroundMode, type CanvasColorTheme, type CanvasTheme } from "@/lib/canvas-theme";
 import { useThemeStore } from "@/stores/use-theme-store";
 import { AnimatedThemeToggler } from "@/components/ui/animated-theme-toggler";
+import type { CanvasInputMode } from "../types";
 
 export function CanvasToolbar({
+    inputMode,
     selectedCount,
     canUndo,
     canRedo,
@@ -27,7 +29,9 @@ export function CanvasToolbar({
     onBackgroundModeChange,
     onShowImageInfoChange,
     onOpenMyAssets,
+    onInputModeChange,
 }: {
+    inputMode: CanvasInputMode;
     selectedCount: number;
     canUndo: boolean;
     canRedo: boolean;
@@ -47,6 +51,7 @@ export function CanvasToolbar({
     onBackgroundModeChange: (mode: CanvasBackgroundMode) => void;
     onShowImageInfoChange: (show: boolean) => void;
     onOpenMyAssets: () => void;
+    onInputModeChange: (mode: CanvasInputMode) => void;
 }) {
     const wrapRef = useRef<HTMLDivElement>(null);
     const colorTheme = useThemeStore((state) => state.theme);
@@ -62,9 +67,15 @@ export function CanvasToolbar({
     const tip = hovered ? toolLabel(hovered) : "";
 
     return (
-        <div className="pointer-events-none absolute bottom-5 z-50 flex justify-center" style={{ left: 300, right: 16 }}>
+        <div className="pointer-events-none absolute bottom-5 left-4 right-4 z-50 flex justify-center xl:left-[300px]">
             {tip ? <DockTip label={tip} x={tipX} theme={theme} /> : null}
             <div ref={wrapRef} className="thin-scrollbar pointer-events-auto flex h-14 max-w-full items-center gap-1 overflow-x-auto rounded-xl border px-2 shadow-lg backdrop-blur [&>*]:shrink-0" style={dockStyle}>
+                <div className="flex items-center gap-0.5 rounded-lg p-0.5" style={{ background: theme.toolbar.itemHover }} data-canvas-no-zoom>
+                    <InputModeButton mode="mouse" current={inputMode} label="鼠标" icon={<MousePointer2 className="size-4" />} onChange={onInputModeChange} />
+                    <InputModeButton mode="touch" current={inputMode} label="触控" icon={<Hand className="size-4" />} onChange={onInputModeChange} />
+                    <InputModeButton mode="pencil" current={inputMode} label="Pencil" icon={<Pencil className="size-4" />} onChange={onInputModeChange} />
+                </div>
+                <Divider theme={theme} />
                 <ToolbarButton id="tool-hand" label="移动/选择" active={!selectedCount} hovered={hovered} activeStyle={activeStyle} hoverStyle={hoverStyle} wrapRef={wrapRef} onTipX={setTipX} onHover={setHovered} onClick={onDeselect}>
                     <Hand className="size-4.5" />
                 </ToolbarButton>
@@ -237,6 +248,24 @@ function ToolbarButton({
             onMouseLeave={() => onHover(null)}
             onClick={onClick}
         />
+    );
+}
+
+function InputModeButton({ mode, current, label, icon, onChange }: { mode: CanvasInputMode; current: CanvasInputMode; label: string; icon: ReactNode; onChange: (mode: CanvasInputMode) => void }) {
+    const theme = canvasThemes[useThemeStore((state) => state.theme)];
+    const active = mode === current;
+
+    return (
+        <button
+            type="button"
+            className="grid size-9 place-items-center rounded-md transition"
+            style={{ background: active ? theme.toolbar.activeBg : "transparent", color: active ? theme.toolbar.activeText : theme.toolbar.item }}
+            onClick={() => onChange(mode)}
+            aria-label={label}
+            title={label}
+        >
+            {icon}
+        </button>
     );
 }
 

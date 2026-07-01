@@ -52,6 +52,7 @@ import { buildCanvasResourceReferences, buildNodeMentionReferences } from "../ut
 import type { CanvasAgentMode } from "../components/canvas-agent-chat-ui";
 import {
     CanvasNodeType,
+    type CanvasInputMode,
     type CanvasAssistantImage,
     type CanvasAssistantSession,
     type CanvasConnection,
@@ -134,7 +135,7 @@ export default function CanvasPage() {
 
     useEffect(() => {
         setMounted(true);
-    }, []);
+    }, [keepNodeToolbar]);
 
     if (!mounted) return <CanvasRefreshShell />;
 
@@ -319,6 +320,13 @@ function InfiniteCanvasPage() {
     const [collapsingBatchIds, setCollapsingBatchIds] = useState<Set<string>>(new Set());
     const [openingBatchIds, setOpeningBatchIds] = useState<Set<string>>(new Set());
     const [isNodeDragging, setIsNodeDragging] = useState(false);
+    const [canvasInputMode, setCanvasInputMode] = useState<CanvasInputMode>("mouse");
+
+    useEffect(() => {
+        const coarsePointer = window.matchMedia("(pointer: coarse)").matches;
+        const hasTouch = navigator.maxTouchPoints > 0;
+        if (coarsePointer || hasTouch) setCanvasInputMode("pencil");
+    }, [keepNodeToolbar]);
 
     const nodesRef = useRef(nodes);
     const connectionsRef = useRef(connections);
@@ -1077,11 +1085,13 @@ function InfiniteCanvasPage() {
         [cancelPendingConnectionCreate, screenToCanvas],
     );
 
-    const handleNodeMouseDown = useCallback((event: ReactMouseEvent, nodeId: string) => {
+    const handleNodeMouseDown = useCallback((event: ReactPointerEvent, nodeId: string) => {
+        if (canvasInputMode === "pencil" && event.pointerType === "touch") return;
         event.stopPropagation();
+        event.currentTarget.setPointerCapture(event.pointerId);
         setContextMenu(null);
         setHoveredNodeId(null);
-        setToolbarNodeId(null);
+        keepNodeToolbar(nodeId);
         setSelectedConnectionId(null);
 
         const currentSelected = selectedNodeIdsRef.current;
@@ -1114,7 +1124,7 @@ function InfiniteCanvasPage() {
         historyPausedRef.current = true;
         nodeDraggingRef.current = true;
         setIsNodeDragging(true);
-    }, []);
+    }, [canvasInputMode, keepNodeToolbar]);
 
     const finishNodeDrag = useCallback((clientX?: number, clientY?: number) => {
         if (rafRef.current) {
@@ -1147,6 +1157,7 @@ function InfiniteCanvasPage() {
         dragRef.current.hasMoved = false;
         dragRef.current.initialSelectedNodes = [];
         if (wasClick && clickedNodeId) {
+            keepNodeToolbar(clickedNodeId);
             const clickedNode = nodesRef.current.find((node) => node.id === clickedNodeId);
             if (clickedNode?.type === CanvasNodeType.Text) {
                 setDialogNodeId((current) => (current === clickedNodeId ? current : null));
@@ -1156,8 +1167,8 @@ function InfiniteCanvasPage() {
         }
     }, []);
 
-    const handleGlobalMouseMove = useCallback(
-        (event: MouseEvent) => {
+    const handleGlobalPointerDragMove = useCallback(
+        (event: PointerEvent) => {
             const currentViewport = viewportRef.current;
 
             if (dragRef.current.isDraggingNode) {
@@ -1225,8 +1236,8 @@ function InfiniteCanvasPage() {
         [screenToCanvas],
     );
 
-    const handleGlobalMouseUp = useCallback(
-        (event: MouseEvent) => {
+    const handleGlobalPointerUp = useCallback(
+        (event: PointerEvent) => {
             finishNodeDrag(event.clientX, event.clientY);
 
             selectionBoxRef.current = null;
@@ -1252,23 +1263,20 @@ function InfiniteCanvasPage() {
     );
 
     useEffect(() => {
-        const handlePointerUp = (event: PointerEvent) => finishNodeDrag(event.clientX, event.clientY);
         const cancelNodeDrag = () => finishNodeDrag();
-        window.addEventListener("mousemove", handleGlobalMouseMove);
-        window.addEventListener("mouseup", handleGlobalMouseUp);
-        window.addEventListener("pointerup", handlePointerUp);
+        window.addEventListener("pointermove", handleGlobalPointerDragMove);
+        window.addEventListener("pointerup", handleGlobalPointerUp);
         window.addEventListener("pointercancel", cancelNodeDrag);
         window.addEventListener("blur", cancelNodeDrag);
         window.addEventListener("pointermove", handleGlobalPointerMove);
         return () => {
-            window.removeEventListener("mousemove", handleGlobalMouseMove);
-            window.removeEventListener("mouseup", handleGlobalMouseUp);
-            window.removeEventListener("pointerup", handlePointerUp);
+            window.removeEventListener("pointermove", handleGlobalPointerDragMove);
+            window.removeEventListener("pointerup", handleGlobalPointerUp);
             window.removeEventListener("pointercancel", cancelNodeDrag);
             window.removeEventListener("blur", cancelNodeDrag);
             window.removeEventListener("pointermove", handleGlobalPointerMove);
         };
-    }, [finishNodeDrag, handleGlobalMouseMove, handleGlobalMouseUp, handleGlobalPointerMove]);
+    }, [finishNodeDrag, handleGlobalPointerDragMove, handleGlobalPointerMove, handleGlobalPointerUp]);
 
     const createImageFileNode = useCallback(async (file: File, position: Position) => {
         const image = await uploadImage(file);
@@ -1442,8 +1450,9 @@ function InfiniteCanvasPage() {
     }, [copySelectedNodes, deleteConnection, deleteNodes, pasteCopiedNodes, pasteSystemClipboard, redoCanvas, selectedConnectionId, setConnecting, undoCanvas]);
 
     const handleConnectStart = useCallback(
-        (event: ReactMouseEvent, nodeId: string, handleType: "source" | "target") => {
+        (event: ReactPointerEvent, nodeId: string, handleType: "source" | "target") => {
             event.stopPropagation();
+            event.currentTarget.setPointerCapture(event.pointerId);
             setMouseWorld(screenToCanvas(event.clientX, event.clientY));
             setConnecting({ nodeId, handleType });
             connectionTargetNodeIdRef.current = null;
@@ -2549,6 +2558,7 @@ function InfiniteCanvasPage() {
                 <InfiniteCanvas
                     containerRef={containerRef}
                     viewport={viewport}
+                    inputMode={canvasInputMode}
                     backgroundMode={backgroundMode}
                     onViewportChange={(next) => {
                         setViewport(next);
@@ -2556,6 +2566,11 @@ function InfiniteCanvasPage() {
                     }}
                     onCanvasMouseDown={handleCanvasMouseDown}
                     onCanvasDeselect={deselectCanvas}
+                    onTouchContextMenu={(event) => {
+                        setContextMenu(null);
+                        setPendingConnectionCreate(null);
+                        setMouseWorld(screenToCanvas(event.clientX, event.clientY));
+                    }}
                     onContextMenu={preventCanvasContextMenu}
                     onDrop={handleDrop}
                 >
@@ -2599,6 +2614,7 @@ function InfiniteCanvasPage() {
                             key={node.id}
                             data={node}
                             scale={viewport.k}
+                            inputMode={canvasInputMode}
                             isSelected={selectedNodeIds.has(node.id)}
                             isRelated={relatedHighlight.nodeIds.has(node.id)}
                             isFocusRelated={activeNodeId === node.id}
@@ -2676,6 +2692,12 @@ function InfiniteCanvasPage() {
                                 event.stopPropagation();
                                 setContextMenu({ type: "node", x: event.clientX, y: event.clientY, nodeId: id });
                             }}
+                            onTouchContextMenu={(clientX, clientY, id) => {
+                                setContextMenu({ type: "node", x: clientX, y: clientY, nodeId: id });
+                                setSelectedNodeIds(new Set([id]));
+                                setSelectedConnectionId(null);
+                                keepNodeToolbar(id);
+                            }}
                         />
                     ))}
 
@@ -2724,6 +2746,8 @@ function InfiniteCanvasPage() {
                 />
 
                 <CanvasToolbar
+                    inputMode={canvasInputMode}
+                    onInputModeChange={setCanvasInputMode}
                     selectedCount={selectedNodeIds.size}
                     canUndo={historyState.canUndo}
                     canRedo={historyState.canRedo}

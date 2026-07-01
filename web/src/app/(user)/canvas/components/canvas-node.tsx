@@ -8,7 +8,7 @@ import { canvasThemes } from "@/lib/canvas-theme";
 import { formatBytes } from "@/lib/image-utils";
 import { useThemeStore } from "@/stores/use-theme-store";
 import { CanvasResourceMentionTextarea } from "./canvas-resource-mention-textarea";
-import { CanvasNodeType, type CanvasNodeData, type Position } from "../types";
+import { CanvasNodeType, type CanvasInputMode, type CanvasNodeData, type Position } from "../types";
 import type { CanvasResourceReference } from "../utils/canvas-resource-references";
 
 type ResizeCorner = "top-left" | "top-right" | "bottom-left" | "bottom-right";
@@ -17,6 +17,7 @@ const selectionBlue = "#2f80ff";
 type CanvasNodeProps = {
     data: CanvasNodeData;
     scale: number;
+    inputMode: CanvasInputMode;
     isSelected: boolean;
     isRelated: boolean;
     isFocusRelated: boolean;
@@ -35,10 +36,10 @@ type CanvasNodeProps = {
     batchOpening?: boolean;
     batchRecovering?: boolean;
     batchMotion?: { x: number; y: number; index: number };
-    onMouseDown: (event: React.MouseEvent, nodeId: string) => void;
+    onMouseDown: (event: React.PointerEvent, nodeId: string) => void;
     onHoverStart: (nodeId: string) => void;
     onHoverEnd: (nodeId: string) => void;
-    onConnectStart: (event: React.MouseEvent, nodeId: string, handleType: "source" | "target") => void;
+    onConnectStart: (event: React.PointerEvent, nodeId: string, handleType: "source" | "target") => void;
     onResize: (nodeId: string, width: number, height: number, position?: Position) => void;
     onContentChange: (nodeId: string, content: string) => void;
     onToggleBatch?: (nodeId: string) => void;
@@ -47,6 +48,7 @@ type CanvasNodeProps = {
     onGenerateImage?: (node: CanvasNodeData) => void;
     onViewImage?: (node: CanvasNodeData) => void;
     onContextMenu: (event: React.MouseEvent, nodeId: string) => void;
+    onTouchContextMenu: (clientX: number, clientY: number, nodeId: string) => void;
 };
 
 type NodeContentRendererProps = {
@@ -72,6 +74,7 @@ type NodeContentRendererProps = {
 export const CanvasNode = React.memo(function CanvasNode({
     data,
     scale,
+    inputMode,
     isSelected,
     isRelated,
     isFocusRelated,
@@ -102,6 +105,7 @@ export const CanvasNode = React.memo(function CanvasNode({
     onGenerateImage,
     onViewImage,
     onContextMenu,
+    onTouchContextMenu,
 }: CanvasNodeProps) {
     const theme = canvasThemes[useThemeStore((state) => state.theme)];
     const [hovered, setHovered] = useState(false);
@@ -114,6 +118,7 @@ export const CanvasNode = React.memo(function CanvasNode({
     const isActive = isConnectionTarget || isSelected || isFocusRelated;
     const imageBorderColor = isActive ? selectionBlue : isRelated && !isBatchChild ? theme.node.muted : "transparent";
     const textareaRef = useRef<HTMLTextAreaElement>(null);
+    const longPressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
     const resizeRef = useRef({
         isResizing: false,
         corner: "bottom-right" as ResizeCorner,
@@ -164,7 +169,7 @@ export const CanvasNode = React.memo(function CanvasNode({
     }, [isEditingContent]);
 
     const handleResizeMove = useCallback(
-        (event: MouseEvent) => {
+        (event: PointerEvent) => {
             if (!resizeRef.current.isResizing) return;
 
             const dx = (event.clientX - resizeRef.current.startX) / scale;
@@ -206,13 +211,15 @@ export const CanvasNode = React.memo(function CanvasNode({
 
     const handleResizeUp = useCallback(() => {
         resizeRef.current.isResizing = false;
-        window.removeEventListener("mousemove", handleResizeMove);
-        window.removeEventListener("mouseup", handleResizeUp);
+        window.removeEventListener("pointermove", handleResizeMove);
+        window.removeEventListener("pointerup", handleResizeUp);
+        window.removeEventListener("pointercancel", handleResizeUp);
     }, [handleResizeMove]);
 
-    const handleResizeMouseDown = (event: React.MouseEvent, corner: ResizeCorner) => {
+    const handleResizeMouseDown = (event: React.PointerEvent, corner: ResizeCorner) => {
         event.stopPropagation();
         event.preventDefault();
+        event.currentTarget.setPointerCapture(event.pointerId);
         resizeRef.current = {
             isResizing: true,
             corner,
@@ -225,14 +232,17 @@ export const CanvasNode = React.memo(function CanvasNode({
             keepRatio: (data.type === CanvasNodeType.Image && !data.metadata?.freeResize) || data.type === CanvasNodeType.Video,
             ratio: (data.metadata?.naturalWidth || data.width) / (data.metadata?.naturalHeight || data.height || 1),
         };
-        window.addEventListener("mousemove", handleResizeMove);
-        window.addEventListener("mouseup", handleResizeUp);
+        window.addEventListener("pointermove", handleResizeMove);
+        window.addEventListener("pointerup", handleResizeUp);
+        window.addEventListener("pointercancel", handleResizeUp);
     };
 
     useEffect(() => {
         return () => {
-            window.removeEventListener("mousemove", handleResizeMove);
-            window.removeEventListener("mouseup", handleResizeUp);
+            window.removeEventListener("pointermove", handleResizeMove);
+            window.removeEventListener("pointerup", handleResizeUp);
+            window.removeEventListener("pointercancel", handleResizeUp);
+            if (longPressTimerRef.current) clearTimeout(longPressTimerRef.current);
         };
     }, [handleResizeMove, handleResizeUp]);
 
@@ -256,6 +266,34 @@ export const CanvasNode = React.memo(function CanvasNode({
                 onHoverEnd(data.id);
             }}
             onContextMenu={(event) => onContextMenu(event, data.id)}
+            onPointerDownCapture={(event) => {
+                if (inputMode === "mouse" || event.pointerType === "mouse") return;
+                const target = event.target instanceof Element ? event.target : null;
+                if (target?.closest("[data-canvas-no-zoom],button,input,textarea,select")) return;
+                if (longPressTimerRef.current) clearTimeout(longPressTimerRef.current);
+                const startX = event.clientX;
+                const startY = event.clientY;
+                longPressTimerRef.current = setTimeout(() => {
+                    longPressTimerRef.current = null;
+                    onTouchContextMenu(startX, startY, data.id);
+                }, 520);
+                const clearLongPress = (moveEvent?: PointerEvent) => {
+                    if (moveEvent && (Math.abs(moveEvent.clientX - startX) > 8 || Math.abs(moveEvent.clientY - startY) > 8)) {
+                        clearTimeout(longPressTimerRef.current!);
+                        longPressTimerRef.current = null;
+                    }
+                };
+                const cancelLongPress = () => {
+                    if (longPressTimerRef.current) clearTimeout(longPressTimerRef.current);
+                    longPressTimerRef.current = null;
+                    window.removeEventListener("pointermove", clearLongPress);
+                    window.removeEventListener("pointerup", cancelLongPress);
+                    window.removeEventListener("pointercancel", cancelLongPress);
+                };
+                window.addEventListener("pointermove", clearLongPress);
+                window.addEventListener("pointerup", cancelLongPress);
+                window.addEventListener("pointercancel", cancelLongPress);
+            }}
         >
             <div
                 className="relative h-full w-full overflow-visible rounded-3xl border-2"
@@ -264,7 +302,10 @@ export const CanvasNode = React.memo(function CanvasNode({
                     borderColor: hasImageContent ? imageBorderColor : isActive ? selectionBlue : isRelated ? theme.node.muted : theme.node.stroke,
                     boxShadow: isActive ? `0 0 0 1px ${selectionBlue}55` : isRelated && !isBatchChild ? `0 0 0 1px ${theme.node.muted}55, 0 18px 48px rgba(0,0,0,.14)` : undefined,
                 }}
-                onMouseDown={(event) => onMouseDown(event, data.id)}
+                onPointerDown={(event) => {
+                    if (inputMode === "pencil" && event.pointerType === "touch") return;
+                    onMouseDown(event, data.id);
+                }}
                 onDoubleClick={(event) => {
                     if (isBatchRoot) {
                         event.stopPropagation();
@@ -320,14 +361,14 @@ export const CanvasNode = React.memo(function CanvasNode({
 
                 {!hasImageContent && !hasVideoContent && !hasAudioContent ? <div className="pointer-events-none absolute inset-x-0 bottom-0 h-12" style={{ background: `linear-gradient(to top, ${theme.canvas.background}66, transparent)` }} /> : null}
 
-                <ResizeHandle corner="top-left" onMouseDown={handleResizeMouseDown} />
-                <ResizeHandle corner="top-right" onMouseDown={handleResizeMouseDown} />
-                <ResizeHandle corner="bottom-left" onMouseDown={handleResizeMouseDown} />
-                <ResizeHandle corner="bottom-right" onMouseDown={handleResizeMouseDown} />
+                <ResizeHandle corner="top-left" touchMode={inputMode !== "mouse"} onMouseDown={handleResizeMouseDown} />
+                <ResizeHandle corner="top-right" touchMode={inputMode !== "mouse"} onMouseDown={handleResizeMouseDown} />
+                <ResizeHandle corner="bottom-left" touchMode={inputMode !== "mouse"} onMouseDown={handleResizeMouseDown} />
+                <ResizeHandle corner="bottom-right" touchMode={inputMode !== "mouse"} onMouseDown={handleResizeMouseDown} />
             </div>
 
-            <ConnectionHandleDot side="left" visible={hovered || isSelected || isConnecting} onMouseDown={(event) => onConnectStart(event, data.id, "target")} />
-            <ConnectionHandleDot side="right" visible={data.type !== CanvasNodeType.Config && (hovered || isSelected || isConnecting)} onMouseDown={(event) => onConnectStart(event, data.id, "source")} />
+            <ConnectionHandleDot side="left" visible={hovered || isSelected || isConnecting || inputMode !== "mouse"} touchMode={inputMode !== "mouse"} onMouseDown={(event) => onConnectStart(event, data.id, "target")} />
+            <ConnectionHandleDot side="right" visible={data.type !== CanvasNodeType.Config && (hovered || isSelected || isConnecting || inputMode !== "mouse")} touchMode={inputMode !== "mouse"} onMouseDown={(event) => onConnectStart(event, data.id, "source")} />
 
             {showPanel && renderPanel ? <div className="absolute left-1/2 top-full z-[70] w-[500px] -translate-x-1/2 pt-4">{renderPanel(data)}</div> : null}
         </div>
@@ -652,7 +693,7 @@ function BatchFrame({ batchCount, batchExpanded, batchOpening, batchRecovering, 
         </div>
     );
 }
-function ResizeHandle({ corner, onMouseDown }: { corner: ResizeCorner; onMouseDown: (event: React.MouseEvent, corner: ResizeCorner) => void }) {
+function ResizeHandle({ corner, touchMode, onMouseDown }: { corner: ResizeCorner; touchMode: boolean; onMouseDown: (event: React.PointerEvent, corner: ResizeCorner) => void }) {
     const positionClass = {
         "top-left": "-left-[14px] -top-[14px] cursor-nwse-resize",
         "top-right": "-right-[14px] -top-[14px] cursor-nesw-resize",
@@ -660,20 +701,20 @@ function ResizeHandle({ corner, onMouseDown }: { corner: ResizeCorner; onMouseDo
         "bottom-right": "-bottom-[14px] -right-[14px] cursor-nwse-resize",
     }[corner];
 
-    return <div className={`absolute z-50 size-7 ${positionClass}`} onMouseDown={(event) => onMouseDown(event, corner)} />;
+    return <div className={`absolute z-50 ${touchMode ? "size-12" : "size-7"} ${positionClass}`} onPointerDown={(event) => onMouseDown(event, corner)} />;
 }
 
-function ConnectionHandleDot({ side, visible, onMouseDown }: { side: "left" | "right"; visible: boolean; onMouseDown: (event: React.MouseEvent) => void }) {
+function ConnectionHandleDot({ side, visible, touchMode, onMouseDown }: { side: "left" | "right"; visible: boolean; touchMode: boolean; onMouseDown: (event: React.PointerEvent) => void }) {
     const theme = canvasThemes[useThemeStore((state) => state.theme)];
 
     return (
         <div
-            className={`absolute top-1/2 z-30 flex size-12 -translate-y-1/2 cursor-crosshair items-center justify-center transition-opacity duration-150 ${
+            className={`absolute top-1/2 z-30 flex ${touchMode ? "size-14" : "size-12"} -translate-y-1/2 cursor-crosshair items-center justify-center transition-opacity duration-150 ${
                 side === "left" ? "-left-6" : "-right-6"
             } ${visible ? "pointer-events-auto opacity-100" : "pointer-events-none opacity-0"}`}
-            onMouseDown={onMouseDown}
+            onPointerDown={onMouseDown}
         >
-            <div className="size-3 rounded-full border-2 transition-all hover:scale-125" style={{ background: theme.node.panel, borderColor: theme.node.muted }} />
+            <div className={`${touchMode ? "size-4" : "size-3"} rounded-full border-2 transition-all hover:scale-125`} style={{ background: theme.node.panel, borderColor: theme.node.muted }} />
         </div>
     );
 }
