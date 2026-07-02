@@ -219,7 +219,7 @@ export const CanvasNode = React.memo(function CanvasNode({
     const handleResizeMouseDown = (event: React.PointerEvent, corner: ResizeCorner) => {
         event.stopPropagation();
         event.preventDefault();
-        event.currentTarget.setPointerCapture(event.pointerId);
+        capturePointer(event.currentTarget, event.pointerId);
         resizeRef.current = {
             isResizing: true,
             corner,
@@ -367,8 +367,8 @@ export const CanvasNode = React.memo(function CanvasNode({
                 <ResizeHandle corner="bottom-right" touchMode={inputMode !== "mouse"} onMouseDown={handleResizeMouseDown} />
             </div>
 
-            <ConnectionHandleDot side="left" visible={hovered || isSelected || isConnecting || inputMode !== "mouse"} touchMode={inputMode !== "mouse"} onMouseDown={(event) => onConnectStart(event, data.id, "target")} />
-            <ConnectionHandleDot side="right" visible={data.type !== CanvasNodeType.Config && (hovered || isSelected || isConnecting || inputMode !== "mouse")} touchMode={inputMode !== "mouse"} onMouseDown={(event) => onConnectStart(event, data.id, "source")} />
+            <ConnectionHandleDot side="left" visible={hovered || isSelected || isConnecting} touchMode={inputMode !== "mouse"} onMouseDown={(event) => onConnectStart(event, data.id, "target")} />
+            <ConnectionHandleDot side="right" visible={data.type !== CanvasNodeType.Config && (hovered || isSelected || isConnecting)} touchMode={inputMode !== "mouse"} onMouseDown={(event) => onConnectStart(event, data.id, "source")} />
 
             {showPanel && renderPanel ? <div className="absolute left-1/2 top-full z-[70] w-[500px] -translate-x-1/2 pt-4">{renderPanel(data)}</div> : null}
         </div>
@@ -717,4 +717,14 @@ function ConnectionHandleDot({ side, visible, touchMode, onMouseDown }: { side: 
             <div className={`${touchMode ? "size-4" : "size-3"} rounded-full border-2 transition-all hover:scale-125`} style={{ background: theme.node.panel, borderColor: theme.node.muted }} />
         </div>
     );
+}
+
+function capturePointer(target: Element, pointerId: number) {
+    try {
+        if (target instanceof HTMLElement && target.hasPointerCapture?.(pointerId) === false) {
+            target.setPointerCapture(pointerId);
+        }
+    } catch {
+        // iPad Safari can reject capture after native gesture transitions.
+    }
 }

@@ -1003,6 +1003,11 @@ function InfiniteCanvasPage() {
         [size.height, size.width],
     );
 
+    const handleViewportChange = useCallback((next: ViewportTransform) => {
+        setViewport(next);
+        setContextMenu(null);
+    }, []);
+
     const applyHistory = useCallback((entry: CanvasHistoryEntry) => {
         if (historyCommitTimerRef.current) {
             clearTimeout(historyCommitTimerRef.current);
@@ -1088,7 +1093,7 @@ function InfiniteCanvasPage() {
     const handleNodeMouseDown = useCallback((event: ReactPointerEvent, nodeId: string) => {
         if (canvasInputMode === "pencil" && event.pointerType === "touch") return;
         event.stopPropagation();
-        event.currentTarget.setPointerCapture(event.pointerId);
+        capturePointer(event.currentTarget, event.pointerId);
         setContextMenu(null);
         setHoveredNodeId(null);
         keepNodeToolbar(nodeId);
@@ -1452,7 +1457,7 @@ function InfiniteCanvasPage() {
     const handleConnectStart = useCallback(
         (event: ReactPointerEvent, nodeId: string, handleType: "source" | "target") => {
             event.stopPropagation();
-            event.currentTarget.setPointerCapture(event.pointerId);
+            capturePointer(event.currentTarget, event.pointerId);
             setMouseWorld(screenToCanvas(event.clientX, event.clientY));
             setConnecting({ nodeId, handleType });
             connectionTargetNodeIdRef.current = null;
@@ -2560,16 +2565,13 @@ function InfiniteCanvasPage() {
                     viewport={viewport}
                     inputMode={canvasInputMode}
                     backgroundMode={backgroundMode}
-                    onViewportChange={(next) => {
-                        setViewport(next);
-                        setContextMenu(null);
-                    }}
+                    onViewportChange={handleViewportChange}
                     onCanvasMouseDown={handleCanvasMouseDown}
                     onCanvasDeselect={deselectCanvas}
-                    onTouchContextMenu={(event) => {
+                    onTouchContextMenu={(clientX, clientY) => {
                         setContextMenu(null);
                         setPendingConnectionCreate(null);
-                        setMouseWorld(screenToCanvas(event.clientX, event.clientY));
+                        setMouseWorld(screenToCanvas(clientX, clientY));
                     }}
                     onContextMenu={preventCanvasContextMenu}
                     onDrop={handleDrop}
@@ -3070,6 +3072,16 @@ function Shortcut({ keys, value }: { keys: string[]; value: string }) {
             <span className="text-right text-sm opacity-55">{value}</span>
         </div>
     );
+}
+
+function capturePointer(target: Element, pointerId: number) {
+    try {
+        if (target instanceof HTMLElement && target.hasPointerCapture?.(pointerId) === false) {
+            target.setPointerCapture(pointerId);
+        }
+    } catch {
+        // iPad Safari can reject capture while native touch gestures are settling.
+    }
 }
 
 function imageExtension(dataUrl: string) {

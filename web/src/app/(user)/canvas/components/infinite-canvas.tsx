@@ -14,7 +14,7 @@ type InfiniteCanvasProps = {
     onViewportChange: (viewport: ViewportTransform) => void;
     onCanvasMouseDown?: (event: React.PointerEvent<HTMLDivElement>) => void;
     onCanvasDeselect?: () => void;
-    onTouchContextMenu?: (event: React.PointerEvent<HTMLDivElement>) => void;
+    onTouchContextMenu?: (clientX: number, clientY: number) => void;
     onContextMenu?: (event: React.MouseEvent) => void;
     onDrop?: (event: React.DragEvent<HTMLDivElement>) => void;
     children: React.ReactNode;
@@ -39,19 +39,23 @@ export function InfiniteCanvas({ containerRef, viewport, inputMode, backgroundMo
         initialY: 0,
         initialK: 1,
         longPressed: false,
+        startedOnBackground: false,
     });
     const longPressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-    const scaleRef = useRef(viewport.k);
     const viewportRef = useRef(viewport);
+    const callbacksRef = useRef({ onViewportChange, onCanvasDeselect, onTouchContextMenu });
     const frameRef = useRef<number | null>(null);
     const nextViewportRef = useRef<ViewportTransform | null>(null);
     const [isSpacePressed, setIsSpacePressed] = useState(false);
     const isTouchMode = inputMode !== "mouse";
 
     useEffect(() => {
-        scaleRef.current = viewport.k;
         viewportRef.current = viewport;
     }, [viewport]);
+
+    useEffect(() => {
+        callbacksRef.current = { onViewportChange, onCanvasDeselect, onTouchContextMenu };
+    }, [onCanvasDeselect, onTouchContextMenu, onViewportChange]);
 
     useEffect(
         () => () => {
@@ -111,14 +115,17 @@ export function InfiniteCanvas({ containerRef, viewport, inputMode, backgroundMo
 
         if (isTouchMode && isTouchPointer) {
             event.preventDefault();
-            event.currentTarget.setPointerCapture(event.pointerId);
+            capturePointer(event.currentTarget, event.pointerId);
             touchState.current.pointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
+            touchState.current.startedOnBackground = isBackgroundClick;
             if (longPressTimerRef.current) clearTimeout(longPressTimerRef.current);
             if (isBackgroundClick && touchState.current.pointers.size === 1) {
+                const startX = event.clientX;
+                const startY = event.clientY;
                 touchState.current.longPressed = false;
                 longPressTimerRef.current = setTimeout(() => {
                     touchState.current.longPressed = true;
-                    onTouchContextMenu?.(event);
+                    callbacksRef.current.onTouchContextMenu?.(startX, startY);
                 }, 520);
             }
             if (touchState.current.pointers.size >= 2) {
@@ -148,14 +155,14 @@ export function InfiniteCanvas({ containerRef, viewport, inputMode, backgroundMo
 
         if (event.button === 0 && (event.ctrlKey || event.metaKey) && isBackgroundClick) {
             event.preventDefault();
-            event.currentTarget.setPointerCapture(event.pointerId);
+            capturePointer(event.currentTarget, event.pointerId);
             onCanvasMouseDown?.(event);
             return;
         }
 
         if (event.button === 1 || (event.button === 0 && !isSpacePressed && isBackgroundClick)) {
             event.preventDefault();
-            event.currentTarget.setPointerCapture(event.pointerId);
+            capturePointer(event.currentTarget, event.pointerId);
             panState.current = {
                 isPanning: true,
                 startX: event.clientX,
@@ -220,7 +227,7 @@ export function InfiniteCanvas({ containerRef, viewport, inputMode, backgroundMo
                 if (frameRef.current) return;
                 frameRef.current = requestAnimationFrame(() => {
                     frameRef.current = null;
-                    if (nextViewportRef.current) onViewportChange(nextViewportRef.current);
+                    if (nextViewportRef.current) callbacksRef.current.onViewportChange(nextViewportRef.current);
                 });
                 return;
             }
@@ -241,7 +248,7 @@ export function InfiniteCanvas({ containerRef, viewport, inputMode, backgroundMo
             if (frameRef.current) return;
             frameRef.current = requestAnimationFrame(() => {
                 frameRef.current = null;
-                if (nextViewportRef.current) onViewportChange(nextViewportRef.current);
+                if (nextViewportRef.current) callbacksRef.current.onViewportChange(nextViewportRef.current);
             });
         };
 
@@ -253,8 +260,9 @@ export function InfiniteCanvas({ containerRef, viewport, inputMode, backgroundMo
                     longPressTimerRef.current = null;
                 }
                 if (touchState.current.pointers.size === 0) {
-                    if (!panState.current.hasMoved && !touchState.current.longPressed) onCanvasDeselect?.();
+                    if (touchState.current.startedOnBackground && !panState.current.hasMoved && !touchState.current.longPressed) callbacksRef.current.onCanvasDeselect?.();
                     touchState.current.longPressed = false;
+                    touchState.current.startedOnBackground = false;
                     panState.current.isPanning = false;
                     return;
                 }
@@ -274,19 +282,36 @@ export function InfiniteCanvas({ containerRef, viewport, inputMode, backgroundMo
             if (!panState.current.isPanning) return;
 
             if (!panState.current.hasMoved) {
-                onCanvasDeselect?.();
+                callbacksRef.current.onCanvasDeselect?.();
             }
             panState.current.isPanning = false;
             document.body.style.cursor = "default";
         };
 
+        const handlePointerCancel = (event: PointerEvent) => {
+            touchState.current.pointers.delete(event.pointerId);
+            if (touchState.current.pointers.size === 0) {
+                panState.current.isPanning = false;
+                touchState.current.startDistance = 0;
+                touchState.current.longPressed = false;
+                touchState.current.startedOnBackground = false;
+            }
+            if (longPressTimerRef.current) {
+                clearTimeout(longPressTimerRef.current);
+                longPressTimerRef.current = null;
+            }
+            document.body.style.cursor = "default";
+        };
+
         window.addEventListener("pointermove", handlePointerMove);
         window.addEventListener("pointerup", handlePointerUp);
+        window.addEventListener("pointercancel", handlePointerCancel);
         return () => {
             window.removeEventListener("pointermove", handlePointerMove);
             window.removeEventListener("pointerup", handlePointerUp);
+            window.removeEventListener("pointercancel", handlePointerCancel);
         };
-    }, [containerRef, isTouchMode, onCanvasDeselect, onViewportChange]);
+    }, [containerRef, isTouchMode]);
 
     useEffect(() => {
         const container = containerRef.current;
@@ -319,6 +344,16 @@ export function InfiniteCanvas({ containerRef, viewport, inputMode, backgroundMo
             </div>
         </div>
     );
+}
+
+function capturePointer(target: Element, pointerId: number) {
+    try {
+        if (target instanceof HTMLElement && target.hasPointerCapture?.(pointerId) === false) {
+            target.setPointerCapture(pointerId);
+        }
+    } catch {
+        // Some iPad browser states reject pointer capture after native gesture changes.
+    }
 }
 
 function getTouchDistance(a: { x: number; y: number }, b: { x: number; y: number }) {
