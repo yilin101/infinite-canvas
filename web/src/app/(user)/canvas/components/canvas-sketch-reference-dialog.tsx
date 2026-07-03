@@ -7,17 +7,21 @@ import { Brush, Eraser, RotateCcw } from "lucide-react";
 import { canvasThemes } from "@/lib/canvas-theme";
 import { useThemeStore } from "@/stores/use-theme-store";
 
+const brushColors = ["#1c1917", "#ef4444", "#f97316", "#facc15", "#22c55e", "#06b6d4", "#3b82f6", "#a855f7"];
+
 export function CanvasSketchReferenceDialog({ open, onClose, onConfirm }: { open: boolean; onClose: () => void; onConfirm: (blob: Blob) => void }) {
     const canvasRef = useRef<HTMLCanvasElement>(null);
     const drawingRef = useRef<{ active: boolean; last: { x: number; y: number } | null }>({ active: false, last: null });
     const theme = canvasThemes[useThemeStore((state) => state.theme)];
     const [mode, setMode] = useState<"draw" | "erase">("draw");
+    const [brushColor, setBrushColor] = useState(brushColors[0]);
     const [brushSize, setBrushSize] = useState(12);
     const [hasSketch, setHasSketch] = useState(false);
 
     useEffect(() => {
         if (!open) return;
         setMode("draw");
+        setBrushColor(brushColors[0]);
         setBrushSize(12);
         setHasSketch(false);
         window.requestAnimationFrame(() => resetSketchCanvas(canvasRef.current));
@@ -31,7 +35,7 @@ export function CanvasSketchReferenceDialog({ open, onClose, onConfirm }: { open
         context.lineCap = "round";
         context.lineJoin = "round";
         context.lineWidth = brushSize;
-        context.strokeStyle = mode === "erase" ? "#ffffff" : "#1c1917";
+        context.strokeStyle = mode === "erase" ? "#ffffff" : brushColor;
         context.fillStyle = context.strokeStyle;
         drawSketchStroke(context, drawingRef.current.last || point, point, brushSize);
         drawingRef.current.last = point;
@@ -62,9 +66,9 @@ export function CanvasSketchReferenceDialog({ open, onClose, onConfirm }: { open
     };
 
     const submit = () => {
-        canvasRef.current?.toBlob((blob) => {
+        exportSketchBlob(canvasRef.current, (blob) => {
             if (blob) onConfirm(blob);
-        }, "image/png");
+        });
     };
 
     return (
@@ -98,6 +102,26 @@ export function CanvasSketchReferenceDialog({ open, onClose, onConfirm }: { open
                         </div>
                         <Slider min={2} max={60} value={brushSize} onChange={(value) => setBrushSize(Number(value))} />
                     </div>
+                    <div className="space-y-2">
+                        <div className="text-sm font-medium opacity-70">画笔颜色</div>
+                        <div className="grid grid-cols-4 gap-2">
+                            {brushColors.map((color) => (
+                                <button
+                                    key={color}
+                                    type="button"
+                                    className="grid h-9 place-items-center rounded-lg border transition hover:scale-[1.03]"
+                                    style={{ borderColor: brushColor === color && mode === "draw" ? theme.node.text : theme.node.stroke, background: theme.node.fill }}
+                                    aria-label={`选择颜色 ${color}`}
+                                    onClick={() => {
+                                        setBrushColor(color);
+                                        setMode("draw");
+                                    }}
+                                >
+                                    <span className="size-5 rounded-full border border-black/10" style={{ background: color }} />
+                                </button>
+                            ))}
+                        </div>
+                    </div>
                     <div className="mt-auto flex items-center justify-between gap-2">
                         <Button icon={<RotateCcw className="size-4" />} onClick={reset}>
                             清空
@@ -120,6 +144,19 @@ function resetSketchCanvas(canvas: HTMLCanvasElement | null) {
     if (!canvas || !context) return;
     context.fillStyle = "#ffffff";
     context.fillRect(0, 0, canvas.width, canvas.height);
+}
+
+function exportSketchBlob(canvas: HTMLCanvasElement | null, callback: BlobCallback) {
+    if (!canvas) return callback(null);
+    const output = document.createElement("canvas");
+    output.width = canvas.width;
+    output.height = canvas.height;
+    const context = output.getContext("2d");
+    if (!context) return canvas.toBlob(callback, "image/png");
+    context.fillStyle = "#ffffff";
+    context.fillRect(0, 0, output.width, output.height);
+    context.drawImage(canvas, 0, 0);
+    output.toBlob(callback, "image/png");
 }
 
 function readCanvasPoint(canvas: HTMLCanvasElement, clientX: number, clientY: number) {
