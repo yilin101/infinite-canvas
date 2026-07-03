@@ -1,8 +1,8 @@
 "use client";
 
-import { ArrowLeft, ArrowRight, BookOpen, CheckSquare, ClipboardPaste, Download, FolderPlus, History, ImagePlus, LoaderCircle, PenLine, Plus, SlidersHorizontal, Sparkles, Trash2, Upload } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
-import { App, Button, Checkbox, Drawer, Empty, Image, Input, Modal, Tag, Tooltip, Typography } from "antd";
+import { ArrowLeft, ArrowRight, BookOpen, Brush, CheckSquare, ClipboardPaste, Download, Eraser, FolderPlus, History, ImagePlus, LoaderCircle, PenLine, Plus, RotateCcw, SlidersHorizontal, Sparkles, Trash2, Upload } from "lucide-react";
+import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
+import { App, Button, Checkbox, Drawer, Empty, Image, Input, Modal, Slider, Tag, Tooltip, Typography } from "antd";
 import localforage from "localforage";
 import { saveAs } from "file-saver";
 
@@ -85,6 +85,7 @@ export default function ImagePage() {
     const [settingsOpen, setSettingsOpen] = useState(false);
     const [promptDialogOpen, setPromptDialogOpen] = useState(false);
     const [assetPickerOpen, setAssetPickerOpen] = useState(false);
+    const [sketchOpen, setSketchOpen] = useState(false);
     const [startedAt, setStartedAt] = useState(0);
     const [elapsedMs, setElapsedMs] = useState(0);
     const [selectedLogIds, setSelectedLogIds] = useState<string[]>([]);
@@ -229,6 +230,13 @@ export default function ImagePage() {
         setAssetPickerOpen(false);
     };
 
+    const addSketchReference = async (blob: Blob) => {
+        const image = await uploadImage(blob);
+        setReferences((value) => [...value, { id: nanoid(), name: `sketch-${value.length + 1}.png`, type: image.mimeType, dataUrl: image.url, storageKey: image.storageKey }]);
+        setSketchOpen(false);
+        message.success("手绘参考图已加入");
+    };
+
     const createSession = () => {
         setPrompt("");
         setReferences([]);
@@ -359,6 +367,9 @@ export default function ImagePage() {
                                 <div className="mb-2 flex items-center justify-between gap-3">
                                     <span className="text-base font-semibold">参考图</span>
                                     <div className="flex gap-2">
+                                        <Button size="small" icon={<Brush className="size-3.5" />} onClick={() => setSketchOpen(true)}>
+                                            手绘
+                                        </Button>
                                         <Button size="small" icon={<ClipboardPaste className="size-3.5" />} onClick={() => void addReferencesFromClipboard()}>
                                             剪切板
                                         </Button>
@@ -472,6 +483,7 @@ export default function ImagePage() {
             </Drawer>
             <PromptSelectDialog open={promptDialogOpen} onOpenChange={setPromptDialogOpen} onSelect={setPrompt} />
             <AssetPickerModal open={assetPickerOpen} defaultTab="my-assets" onInsert={(payload) => void insertPickedAsset(payload)} onClose={() => setAssetPickerOpen(false)} />
+            <SketchReferenceModal open={sketchOpen} onClose={() => setSketchOpen(false)} onConfirm={(blob) => void addSketchReference(blob)} />
             <Modal title="删除生成记录" open={deleteConfirmOpen} onCancel={() => setDeleteConfirmOpen(false)} onOk={deleteSelectedLogs} okText="删除" okButtonProps={{ danger: true }} cancelText="取消">
                 确定删除选中的 {selectedLogIds.length} 条生成记录吗？
             </Modal>
@@ -492,6 +504,115 @@ function GenerationSettings({ config, model, updateConfig, openConfigDialog }: {
                 <ImageSettingsPanel config={config} onConfigChange={(key, value) => updateConfig(key, value)} theme={theme} showTitle={false} className="space-y-4" maxCount={10} />
             </div>
         </>
+    );
+}
+
+function SketchReferenceModal({ open, onClose, onConfirm }: { open: boolean; onClose: () => void; onConfirm: (blob: Blob) => void }) {
+    const canvasRef = useRef<HTMLCanvasElement>(null);
+    const drawingRef = useRef<{ active: boolean; last: { x: number; y: number } | null }>({ active: false, last: null });
+    const [mode, setMode] = useState<"draw" | "erase">("draw");
+    const [brushSize, setBrushSize] = useState(12);
+    const [hasSketch, setHasSketch] = useState(false);
+
+    useEffect(() => {
+        if (!open) return;
+        setMode("draw");
+        setBrushSize(12);
+        setHasSketch(false);
+        window.requestAnimationFrame(() => resetSketchCanvas(canvasRef.current));
+    }, [open]);
+
+    const draw = (event: ReactPointerEvent<HTMLCanvasElement>) => {
+        const canvas = event.currentTarget;
+        const context = canvas.getContext("2d");
+        if (!context) return;
+        const point = readCanvasPoint(canvas, event.clientX, event.clientY);
+        context.lineCap = "round";
+        context.lineJoin = "round";
+        context.lineWidth = brushSize;
+        context.strokeStyle = mode === "erase" ? "#ffffff" : "#1c1917";
+        context.fillStyle = context.strokeStyle;
+        const last = drawingRef.current.last || point;
+        drawSketchStroke(context, last, point, brushSize);
+        drawingRef.current.last = point;
+        if (mode === "draw") setHasSketch(true);
+    };
+
+    const startDraw = (event: ReactPointerEvent<HTMLCanvasElement>) => {
+        event.preventDefault();
+        event.currentTarget.setPointerCapture(event.pointerId);
+        drawingRef.current = { active: true, last: null };
+        draw(event);
+    };
+
+    const moveDraw = (event: ReactPointerEvent<HTMLCanvasElement>) => {
+        if (!drawingRef.current.active) return;
+        event.preventDefault();
+        draw(event);
+    };
+
+    const stopDraw = () => {
+        drawingRef.current = { active: false, last: null };
+    };
+
+    const reset = () => {
+        resetSketchCanvas(canvasRef.current);
+        setHasSketch(false);
+    };
+
+    const submit = () => {
+        const canvas = canvasRef.current;
+        if (!canvas) return;
+        canvas.toBlob((blob) => {
+            if (blob) onConfirm(blob);
+        }, "image/png");
+    };
+
+    return (
+        <Modal title="手绘参考图" open={open} onCancel={onClose} footer={null} width={860} centered destroyOnHidden>
+            <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_220px]">
+                <div className="overflow-hidden rounded-lg border border-stone-200 bg-stone-50 p-2 dark:border-stone-800 dark:bg-stone-900">
+                    <canvas
+                        ref={canvasRef}
+                        width={1024}
+                        height={1024}
+                        className="block aspect-square w-full cursor-crosshair rounded-md bg-white touch-none"
+                        onPointerDown={startDraw}
+                        onPointerMove={moveDraw}
+                        onPointerUp={stopDraw}
+                        onPointerCancel={stopDraw}
+                    />
+                </div>
+                <div className="flex min-h-0 flex-col gap-4">
+                    <div className="grid grid-cols-2 gap-2">
+                        <Button type={mode === "draw" ? "primary" : "default"} icon={<Brush className="size-4" />} onClick={() => setMode("draw")}>
+                            画笔
+                        </Button>
+                        <Button type={mode === "erase" ? "primary" : "default"} icon={<Eraser className="size-4" />} onClick={() => setMode("erase")}>
+                            橡皮
+                        </Button>
+                    </div>
+                    <div className="space-y-2">
+                        <div className="flex items-center justify-between text-sm">
+                            <span className="font-medium text-stone-600 dark:text-stone-300">笔刷大小</span>
+                            <span className="font-semibold">{brushSize}px</span>
+                        </div>
+                        <Slider min={2} max={60} value={brushSize} onChange={(value) => setBrushSize(Number(value))} />
+                    </div>
+                    <div className="mt-auto flex items-center justify-between gap-2">
+                        <Button icon={<RotateCcw className="size-4" />} onClick={reset}>
+                            清空
+                        </Button>
+                        <div className="flex gap-2">
+                            <Button onClick={onClose}>取消</Button>
+                            <Button type="primary" disabled={!hasSketch} onClick={submit}>
+                                加入参考图
+                            </Button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </Modal>
     );
 }
 
@@ -760,6 +881,34 @@ function moveListItem<T>(items: T[], index: number, offset: number) {
     const next = [...items];
     [next[index], next[targetIndex]] = [next[targetIndex], next[index]];
     return next;
+}
+
+function resetSketchCanvas(canvas: HTMLCanvasElement | null) {
+    const context = canvas?.getContext("2d");
+    if (!canvas || !context) return;
+    context.fillStyle = "#ffffff";
+    context.fillRect(0, 0, canvas.width, canvas.height);
+}
+
+function readCanvasPoint(canvas: HTMLCanvasElement, clientX: number, clientY: number) {
+    const rect = canvas.getBoundingClientRect();
+    return {
+        x: ((clientX - rect.left) / Math.max(1, rect.width)) * canvas.width,
+        y: ((clientY - rect.top) / Math.max(1, rect.height)) * canvas.height,
+    };
+}
+
+function drawSketchStroke(context: CanvasRenderingContext2D, from: { x: number; y: number }, to: { x: number; y: number }, size: number) {
+    if (from.x === to.x && from.y === to.y) {
+        context.beginPath();
+        context.arc(to.x, to.y, size / 2, 0, Math.PI * 2);
+        context.fill();
+        return;
+    }
+    context.beginPath();
+    context.moveTo(from.x, from.y);
+    context.lineTo(to.x, to.y);
+    context.stroke();
 }
 
 function ReferenceOrderButtons({ index, total, onMove }: { index: number; total: number; onMove: (offset: number) => void }) {
