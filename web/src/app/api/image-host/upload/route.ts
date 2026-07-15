@@ -18,7 +18,7 @@ export async function POST(request: Request) {
         if (!(file instanceof File)) return NextResponse.json({ message: "请选择要上传的图片" }, { status: 400 });
         const publicDomain = String(incoming.get("publicBaseUrl") || "").trim();
         if (!publicDomain) return NextResponse.json({ message: "请先在配置里填写图床根域名" }, { status: 400 });
-        const publicBaseUrl = createRandomPublicBaseUrl(publicDomain);
+        const publicBaseUrl = createPublicBaseUrl(publicDomain);
         if (!publicBaseUrl) return NextResponse.json({ message: "图床根域名格式不正确，只需要填写 brp2o0stwv.xin 这类域名" }, { status: 400 });
         const imageHostConfigError = validateImageHostConfig();
         if (imageHostConfigError) return NextResponse.json({ message: imageHostConfigError }, { status: 400 });
@@ -160,10 +160,10 @@ function isHttpUrl(value: string) {
     return /^https?:\/\//.test(value);
 }
 
-function createRandomPublicBaseUrl(value: string) {
+function createPublicBaseUrl(value: string) {
     const host = normalizePublicHost(value);
     if (!host) return "";
-    return `http://${randomHostPrefix()}.m.${host}`;
+    return `http://${host}`;
 }
 
 function normalizePublicHost(value: string) {
@@ -178,10 +178,6 @@ function normalizePublicHost(value: string) {
     }
 }
 
-function randomHostPrefix() {
-    const chars = "abcdefghijklmnopqrstuvwxyz0123456789";
-    return Array.from({ length: 4 }, () => chars[Math.floor(Math.random() * chars.length)]).join("");
-}
 
 function extractErrorMessage(value: unknown) {
     if (!value || typeof value !== "object") return "";
