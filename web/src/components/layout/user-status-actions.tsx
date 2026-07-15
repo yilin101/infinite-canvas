@@ -1,5 +1,3 @@
-"use client";
-
 import type { CSSProperties } from "react";
 import { BookOpen, Keyboard, LogOut, Settings2, UserRound } from "lucide-react";
 import { App, Dropdown } from "antd";

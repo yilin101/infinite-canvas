@@ -1,5 +1,3 @@
-"use client";
-
 import { create } from "zustand";
 
 import type { AiConfig } from "@/stores/use-config-store";
