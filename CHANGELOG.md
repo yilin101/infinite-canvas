@@ -2,6 +2,8 @@
 
 ## Unreleased
 
++ [修复] 修复同步上游模型配置结构后 Docker 构建失败的问题，并保留图床 HTTPS 配置。
+
 ## v0.16.0 - 2026-08-18
 
 + [新增] 提示词来源新增 Freestylefly GPT Image 2 内置来源。
