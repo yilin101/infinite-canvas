@@ -230,7 +230,7 @@ function uploadErrorMessage(response: Response, data: unknown, text: string, upl
 
 function createPublicBaseUrl(value: string) {
     const host = normalizePublicHost(value);
-    return host ? `http://${host}` : "";
+    return host ? `https://${host}` : "";
 }
 
 function normalizePublicHost(value: string) {

@@ -411,7 +411,7 @@ export function AppConfigPanel({ showDoneButton = false, initialTab = "channels"
                                         <div className="mt-1 text-xs leading-5 text-stone-500">图片节点的“传图床”会通过服务端代理上传。上传接口、字段名和 Token 在 Docker 环境变量中配置；根域名必填，未填写时不会上传，也不会复制原始图床域名链接。</div>
                                     </div>
                                     <div className="grid gap-4">
-                                        <Form.Item label="图床根域名" extra="只填 brp2o0stwv.xin。上传成功后会自动生成 http://brp2o0stwv.xin，并把返回链接域名替换成它。" className="mb-0">
+                                        <Form.Item label="图床根域名" extra="只填 brp2o0stwv.xin。上传成功后会自动生成 https://brp2o0stwv.xin，并把返回链接域名替换成它。" className="mb-0">
                                             <Input value={imageHost.publicBaseUrl} placeholder="brp2o0stwv.xin" onChange={(event) => updateImageHostConfig("publicBaseUrl", event.target.value)} />
                                         </Form.Item>
                                     </div>
